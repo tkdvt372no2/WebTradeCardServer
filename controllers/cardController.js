@@ -10,28 +10,52 @@ import { Transaction } from "../models/Transaction.js";
 export const getAllCards = async (req, res, next) => {
   try {
     const keyword = req.query.keyword || "";
-    const type = req.query.type || "";
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 8;
-    const skip = (page - 1) * limit;
+    const types = req.query.types ? req.query.types.split(",") : [];
+    const minPrice = parseInt(req.query.minPrice) || 0;
+    const maxPrice = parseInt(req.query.maxPrice) || 10000;
+    const bestSeller = req.query.bestSeller === "true";
+    const page = req.query.page ? parseInt(req.query.page) : null;
+    const limit = req.query.limit ? parseInt(req.query.limit) : null;
 
-    const totalCards = await Card.countDocuments({
-      name: { $regex: keyword, $options: "i" },
-      type: { $regex: type, $options: "i" },
-    });
+    let filter = {};
 
-    const cards = await Card.find({
-      name: { $regex: keyword, $options: "i" },
-      type: { $regex: type, $options: "i" },
-    })
-      .skip(skip)
-      .limit(limit);
-    const totalP = Math.ceil(totalCards / limit);
+    if (keyword) {
+      filter.name = { $regex: keyword, $options: "i" };
+    }
+
+    if (types.length > 0) {
+      filter.type = { $in: types };
+    }
+
+    if (minPrice || maxPrice) {
+      filter.price = { $gte: minPrice, $lte: maxPrice };
+    }
+
+    if (bestSeller) {
+      filter["listings.0"] = { $exists: true };
+    }
+
+    const totalCards = await Card.countDocuments(filter);
+    let query = Card.find(filter);
+
+    if (bestSeller) {
+      query.sort({ "listings.length": -1 });
+    }
+
+    if (page && limit) {
+      const skip = (page - 1) * limit;
+      query = query.skip(skip).limit(limit);
+    }
+
+    const cards = await query;
+
+    const totalP = page && limit ? Math.ceil(totalCards / limit) : 1;
+
     res.status(200).json({
       success: true,
       cards,
       totalCards,
-      page,
+      page: page || 1,
       totalPages: totalP,
     });
   } catch (error) {
