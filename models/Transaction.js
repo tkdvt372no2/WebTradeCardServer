@@ -14,9 +14,13 @@ const transactionSchema = new mongoose.Schema({
   card: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Card",
-    required: true,
+    required: false,
   },
   price: {
+    type: Number,
+    required: false,
+  },
+  amount: {
     type: Number,
     required: false,
   },
@@ -26,10 +30,15 @@ const transactionSchema = new mongoose.Schema({
   },
   transactionType: {
     type: String,
-    enum: ["direct", "resale", "gift"],
+    enum: ["direct", "resale", "gift", "transfer"],
     default: "direct",
   },
   recipient: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    required: false,
+  },
+  sender: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "User",
     required: false,

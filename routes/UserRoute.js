@@ -10,6 +10,7 @@ import {
     getAllUsers,
     getMyProfile,
     resetPassword,
+    transferCoins,
     updateProfile,
     updateProfilePicture,
     updateUserRole,
@@ -20,6 +21,7 @@ const router = express.Router();
 
 router.post("/register", singleUpload, Register);
 
+router.route("/transfer-coins").post(isAuthenticated, transferCoins);
 
 router.post("/login", Login);
 

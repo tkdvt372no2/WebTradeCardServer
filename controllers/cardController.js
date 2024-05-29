@@ -321,7 +321,14 @@ export const getUserListings = catchAsyncError(async (req, res, next) => {
 
   const listings = cards
     .map((card) =>
-      card.listings.filter((listing) => listing.seller === user.addressWallet)
+      card.listings
+        .filter((listing) => listing.seller === user.addressWallet)
+        .map((listing) => ({
+          ...listing.toObject(),
+          cardName: card.name,
+          cardImage: card.image.url,
+          cardId: card._id,
+        }))
     )
     .flat();
 

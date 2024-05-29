@@ -8,6 +8,7 @@ import cloudinary from "cloudinary";
 import getDataUri from "../utils/dataUri.js";
 import { Stats } from "../models/Stats.js";
 import { getRandomCards, updateCardTotals } from "./cardController.js";
+import { Transaction } from "../models/Transaction.js";
 
 export const Register = catchAsyncError(async (req, res, next) => {
   const { name, email, password } = req.body;
@@ -218,6 +219,44 @@ export const deleteUser = catchAsyncError(async (req, res, next) => {
   res.status(200).json({
     success: true,
     message: "Xoá tài khoản thành công",
+  });
+});
+
+export const transferCoins = catchAsyncError(async (req, res, next) => {
+  const { diaChiViNguoiNhan, amount } = req.body;
+
+  if (!diaChiViNguoiNhan || !amount) {
+    return next(new ErrorHandler("Vui lòng cung cấp đầy đủ thông tin", 400));
+  }
+
+  const sender = await User.findById(req.user._id);
+  const nguoiNhan = await User.findOne({ addressWallet: diaChiViNguoiNhan });
+
+  if (!nguoiNhan) {
+    return next(new ErrorHandler("Không tìm thấy tài khoản người nhận", 404));
+  }
+
+  if (sender.coin < amount) {
+    return next(new ErrorHandler("Số dư không đủ để chuyển", 400));
+  }
+
+  sender.coin -= amount;
+  nguoiNhan.coin += amount;
+
+  await sender.save();
+  await nguoiNhan.save();
+  await Transaction.create({
+    sender: sender._id,
+    recipient: nguoiNhan._id,
+    amount,
+    transactionType: "transfer",
+  });
+
+  res.status(200).json({
+    success: true,
+    message: "Chuyển coin thành công",
+    senderCoin: sender.coin,
+    nguoiNhanCoin: nguoiNhan.coin,
   });
 });
 

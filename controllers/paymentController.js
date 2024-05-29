@@ -95,7 +95,7 @@ export const getUserTransactions = catchAsyncError(async (req, res, next) => {
     const transactions = await Payment.find({
       userId: req.user._id,
       status: "success",
-      createdAt: { $gte: startDate }
+      createdAt: { $gte: startDate },
     }).sort({ createdAt: -1 });
 
     res.status(200).json({
@@ -111,78 +111,99 @@ export const getUserTransactions = catchAsyncError(async (req, res, next) => {
   }
 });
 
-export const getUserCardTransactions = catchAsyncError(async (req, res, next) => {
-  try {
-    const { filter } = req.query;
-    const now = new Date();
-    let startDate;
+export const getUserCardTransactions = catchAsyncError(
+  async (req, res, next) => {
+    try {
+      const { filter } = req.query;
+      const now = new Date();
+      let startDate;
 
-    switch (filter) {
-      case "day":
-        startDate = new Date(now.setHours(0, 0, 0, 0));
-        break;
-      case "week":
-        startDate = new Date(now.setDate(now.getDate() - now.getDay()));
-        startDate.setHours(0, 0, 0, 0);
-        break;
-      case "month":
-        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-        break;
-      default:
-        startDate = new Date(0); // Lấy tất cả các giao dịch
-    }
+      switch (filter) {
+        case "day":
+          startDate = new Date(now.setHours(0, 0, 0, 0));
+          break;
+        case "week":
+          startDate = new Date(now.setDate(now.getDate() - now.getDay()));
+          startDate.setHours(0, 0, 0, 0);
+          break;
+        case "month":
+          startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+          break;
+        default:
+          startDate = new Date(0); // Lấy tất cả các giao dịch
+      }
 
-    const transactions = await Transaction.find({
-      $or: [{ buyer: req.user._id }, { seller: req.user._id }],
-      createdAt: { $gte: startDate }
-    })
-    .sort({ createdAt: -1 })
-    .populate('buyer', 'name addressWallet')
-    .populate('seller', 'name addressWallet')
-    .populate('card', 'name image');
+      const transactions = await Transaction.find({
+        $or: [
+          { buyer: req.user._id },
+          { seller: req.user._id },
+          { recipient: req.user._id },
+          { sender: req.user._id },
+        ],
+        createdAt: { $gte: startDate },
+      })
+        .sort({ createdAt: -1 })
+        .populate("buyer", "name addressWallet")
+        .populate("seller", "name addressWallet")
+        .populate("card", "name image")
+        .populate("recipient", "name addressWallet")
+        .populate("sender", "name addressWallet");
 
-    res.status(200).json({
-      success: true,
-      transactions,
-    });
-  } catch (error) {
-    console.error("Không thể lấy được thông tin hoá đơn:", error);
-    res.status(500).json({
-      success: false,
-      message: "Server lỗi",
-    });
-  }
-});
-
-export const getCardTransactionsByWalletAddress = catchAsyncError(async (req, res, next) => {
-  try {
-    const { walletAddress } = req.params;
-    const user = await User.findOne({ addressWallet: walletAddress });
-
-    if (!user) {
-      return res.status(404).json({
+      res.status(200).json({
+        success: true,
+        transactions,
+      });
+    } catch (error) {
+      console.error("Không thể lấy được thông tin hoá đơn:", error);
+      res.status(500).json({
         success: false,
-        message: "Không tìm thấy người dùng",
+        message: "Server lỗi",
       });
     }
-
-    const transactions = await Transaction.find({
-      $or: [{ buyer: user._id }, { seller: user._id }]
-    })
-    .sort({ createdAt: -1 })
-    .populate('buyer', 'name addressWallet')
-    .populate('seller', 'name addressWallet')
-    .populate('card', 'name image');
-
-    res.status(200).json({
-      success: true,
-      transactions,
-    });
-  } catch (error) {
-    console.error("Không thể tìm thấy thông tin giao dịch qua địa chỉ ví này:", error);
-    res.status(500).json({
-      success: false,
-      message: "Server lỗi",
-    });
   }
-});
+);
+
+export const getCardTransactionsByWalletAddress = catchAsyncError(
+  async (req, res, next) => {
+    try {
+      const { walletAddress } = req.params;
+      const user = await User.findOne({ addressWallet: walletAddress });
+
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: "Không tìm thấy người dùng",
+        });
+      }
+
+      const transactions = await Transaction.find({
+        $or: [
+          { buyer: user._id },
+          { seller: user._id },
+          { recipient: user._id },
+          { sender: user._id },
+        ],
+      })
+        .sort({ createdAt: -1 })
+        .populate("buyer", "name addressWallet")
+        .populate("seller", "name addressWallet")
+        .populate("recipient", "name addressWallet")
+        .populate("sender", "name addressWallet")
+        .populate("card", "name image");
+
+      res.status(200).json({
+        success: true,
+        transactions,
+      });
+    } catch (error) {
+      console.error(
+        "Không thể tìm thấy thông tin giao dịch qua địa chỉ ví này:",
+        error
+      );
+      res.status(500).json({
+        success: false,
+        message: "Server lỗi",
+      });
+    }
+  }
+);
