@@ -110,3 +110,5 @@ schema.methods.getResetToken = function () {
 };
 
 export const User = mongoose.model("User", schema);
+
+

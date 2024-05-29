@@ -16,6 +16,7 @@ export const getAllCards = async (req, res, next) => {
     const bestSeller = req.query.bestSeller === "true";
     const page = req.query.page ? parseInt(req.query.page) : null;
     const limit = req.query.limit ? parseInt(req.query.limit) : null;
+    const sortOrder = req.query.sortOrder === "desc" ? -1 : 1;
 
     let filter = {};
 
@@ -40,6 +41,8 @@ export const getAllCards = async (req, res, next) => {
 
     if (bestSeller) {
       query.sort({ "listings.length": -1 });
+    } else {
+      query.sort({ price: sortOrder });
     }
 
     if (page && limit) {
@@ -414,3 +417,26 @@ export const cancelSell = catchAsyncError(async (req, res, next) => {
     message: "Hủy rao bán thành công và thẻ đã được hoàn lại",
   });
 });
+
+export const updateCardPricesRandomly = async () => {
+  try {
+    const cards = await Card.find({});
+
+    for (let card of cards) {
+      const changeAmount = Math.floor(Math.random() * 10) + 1;
+      const increase = Math.random() < 0.5;
+
+      if (increase) {
+        card.price += changeAmount;
+      } else {
+        card.price = Math.max(0, card.price - changeAmount);
+      }
+
+      await card.save();
+    }
+
+    console.log("Cập nhật giá thẻ thành công.");
+  } catch (error) {
+    console.error("Lỗi khi cập nhật giá thẻ:", error);
+  }
+};

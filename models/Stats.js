@@ -5,7 +5,15 @@ const statsSchema = new mongoose.Schema({
     type: Number,
     default: 0,
   },
-  cardsSold: {
+  cardsSoldSystem: {
+    type: Number,
+    default: 0,
+  },
+  cardsTraded: {
+    type: Number,
+    default: 0,
+  },
+  totalCoinsDeposited: {
     type: Number,
     default: 0,
   },

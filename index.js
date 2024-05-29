@@ -5,6 +5,8 @@ import nodeCron from "node-cron";
 import { Stats } from "./models/Stats.js";
 import http from "http";
 import PayOS from "@payos/node";
+import { updateCardPricesRandomly } from "./controllers/cardController.js";
+import { Card } from "./models/Card.js";
 
 connectDb();
 
@@ -27,6 +29,7 @@ nodeCron.schedule("0 0 0 1 * *", async () => {
   }
 });
 
+nodeCron.schedule("*/10 * * * *", updateCardPricesRandomly);
 app.listen(process.env.PORT, () => {
   console.log("Server listening on port " + process.env.PORT);
 });

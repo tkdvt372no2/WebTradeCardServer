@@ -260,12 +260,82 @@ export const transferCoins = catchAsyncError(async (req, res, next) => {
   });
 });
 
-// User.watch().on("change", async () => {
-//     const stats = await Stats.find({}).sort({ createdAt: "desc" }).limit(1);
+export const getAdminStats = catchAsyncError(async (req, res, next) => {
+  const stats = await Stats.find({}).sort({ createdAt: "desc" }).limit(12);
 
-//     stats[0].users = await User.countDocuments();
+  const latestStats = stats[0];
 
-//     stats[0].createdAt = new Date(Date.now());
+  const usersCount = latestStats?.users || 0;
+  const cardsSoldSystemCount = latestStats?.cardsSoldSystem || 0;
+  const cardsTradedCount = latestStats?.cardsTraded || 0;
+  const totalCoinsDepositedCount = latestStats?.totalCoinsDeposited || 0;
+  const totalCoinsTransactedCount = latestStats?.totalCoinsTransacted || 0;
 
-//     await stats[0].save();
-//   });
+  const previousStats = stats[1] || {};
+
+  const calculatePercentage = (current, previous) => {
+    if (previous === 0 || !previous) return 100;
+    return (((current - previous) / previous) * 100).toFixed(2);
+  };
+
+  const usersPercentage = calculatePercentage(usersCount, previousStats.users);
+  const cardsSoldSystemPercentage = calculatePercentage(
+    cardsSoldSystemCount,
+    previousStats.cardsSoldSystem
+  );
+  const cardsTradedPercentage = calculatePercentage(
+    cardsTradedCount,
+    previousStats.cardsTraded
+  );
+  const totalCoinsDepositedPercentage = calculatePercentage(
+    totalCoinsDepositedCount,
+    previousStats.totalCoinsDeposited
+  );
+  const totalCoinsTransactedPercentage = calculatePercentage(
+    totalCoinsTransactedCount,
+    previousStats.totalCoinsTransacted
+  );
+
+  const usersProfit = usersPercentage >= 0;
+  const cardsSoldSystemProfit = cardsSoldSystemPercentage >= 0;
+  const cardsTradedProfit = cardsTradedPercentage >= 0;
+  const totalCoinsDepositedProfit = totalCoinsDepositedPercentage >= 0;
+  const totalCoinsTransactedProfit = totalCoinsTransactedPercentage >= 0;
+
+  res.status(200).json({
+    success: true,
+    stats,
+    usersCount,
+    cardsSoldSystemCount,
+    cardsTradedCount,
+    totalCoinsDepositedCount,
+    totalCoinsTransactedCount,
+    usersPercentage,
+    cardsSoldSystemPercentage,
+    cardsTradedPercentage,
+    totalCoinsDepositedPercentage,
+    totalCoinsTransactedPercentage,
+    usersProfit,
+    cardsSoldSystemProfit,
+    cardsTradedProfit,
+    totalCoinsDepositedProfit,
+    totalCoinsTransactedProfit,
+  });
+});
+
+User.watch().on("change", async () => {
+  try {
+    const stats = await Stats.find({}).sort({ createdAt: "desc" }).limit(1);
+    const usersCount = await User.countDocuments({ role: "user" });
+
+    if (stats.length > 0) {
+      stats[0].users = usersCount;
+      stats[0].createdAt = new Date(Date.now());
+      await stats[0].save();
+    } else {
+      await Stats.create({ users: usersCount });
+    }
+  } catch (error) {
+    console.error("Không thể cập nhật thống kê:", error);
+  }
+});

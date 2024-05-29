@@ -3,6 +3,7 @@ import { User } from "../models/User.js";
 import { payOS } from "../index.js";
 import Payment from "../models/Payment.js";
 import { Transaction } from "../models/Transaction.js";
+import { Stats } from "../models/Stats.js";
 
 export const createPaymentLink = catchAsyncError(async (req, res, next) => {
   const { coinAmount } = req.body;
@@ -207,3 +208,126 @@ export const getCardTransactionsByWalletAddress = catchAsyncError(
     }
   }
 );
+
+Transaction.watch().on("change", async () => {
+  try {
+    const stats = await Stats.find({}).sort({ createdAt: "desc" }).limit(1);
+    const transactions = await Transaction.find({});
+
+    let cardsSoldSystem = 0;
+    let cardsTraded = 0;
+
+    transactions.forEach((transaction) => {
+      if (transaction.transactionType === "direct") {
+        cardsSoldSystem += 1;
+      } else if (
+        transaction.transactionType === "resale" ||
+        transaction.transactionType === "gift"
+      ) {
+        cardsTraded += 1;
+      }
+    });
+    if (stats.length > 0) {
+      stats[0].cardsSoldSystem = cardsSoldSystem;
+      stats[0].cardsTraded = cardsTraded;
+      stats[0].createdAt = new Date(Date.now());
+      await stats[0].save();
+    } else {
+      await Stats.create({
+        cardsSoldSystem,
+        cardsTraded,
+      });
+    }
+  } catch (error) {
+    console.error("Không thể cập nhật thống kê:", error);
+  }
+});
+
+Payment.watch().on("change", async () => {
+  try {
+    const stats = await Stats.find({}).sort({ createdAt: "desc" }).limit(1);
+
+    const payments = await Payment.find({ status: "success" });
+
+    let totalCoinsDeposited = 0;
+
+    payments.forEach((payment) => {
+      totalCoinsDeposited += payment.amount;
+    });
+
+    if (stats.length > 0) {
+      stats[0].totalCoinsDeposited = totalCoinsDeposited;
+      await stats[0].save();
+    } else {
+      await Stats.create({
+        totalCoinsDeposited,
+      });
+    }
+  } catch (error) {
+    console.error("Không thể cập nhật thống kê:", error);
+  }
+});
+
+Transaction.watch().on("change", async () => {
+  try {
+    const stats = await Stats.find({}).sort({ createdAt: "desc" }).limit(1);
+
+    const transactions = await Transaction.find({
+      transactionType: { $in: ["transfer", "direct", "resale", "gift"] },
+    });
+
+    let totalCoinsTransacted = transactions.reduce((acc, transaction) => {
+      return acc + (transaction.amount || transaction.price || 0);
+    }, 0);
+
+    if (isNaN(totalCoinsTransacted)) {
+      totalCoinsTransacted = 0;
+    }
+
+    stats[0].totalCoinsTransacted = totalCoinsTransacted;
+    stats[0].createdAt = new Date(Date.now());
+
+    await stats[0].save();
+  } catch (error) {
+    console.error("Không thể cập nhật thống kê:", error);
+  }
+});
+
+Transaction.watch().on("change", async () => {
+  try {
+    const stats = await Stats.find({}).sort({ createdAt: "desc" }).limit(1);
+    const transactions = await Transaction.find({});
+
+    let cardsSoldSystem = 0;
+    let cardsTraded = 0;
+
+    transactions.forEach((transaction) => {
+      if (transaction.transactionType === "direct") {
+        cardsSoldSystem++;
+      }
+      if (
+        transaction.transactionType === "resale" ||
+        transaction.transactionType === "gift"
+      ) {
+        cardsTraded++;
+      }
+    });
+
+    if (stats.length > 0) {
+      stats[0].cardsSoldSystem = cardsSoldSystem;
+      stats[0].cardsTraded = cardsTraded;
+      stats[0].createdAt = new Date(Date.now());
+
+      await stats[0].save();
+    } else {
+      await Stats.create({
+        cardsSoldSystem,
+        cardsTraded,
+        totalCoinsDeposited: 0,
+        totalCoinsTransacted: 0,
+      });
+    }
+  } catch (error) {
+    console.error("Không thể cập nhật thống kê:", error);
+  }
+});
