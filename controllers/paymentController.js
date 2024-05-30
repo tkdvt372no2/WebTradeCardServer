@@ -209,40 +209,6 @@ export const getCardTransactionsByWalletAddress = catchAsyncError(
   }
 );
 
-Transaction.watch().on("change", async () => {
-  try {
-    const stats = await Stats.find({}).sort({ createdAt: "desc" }).limit(1);
-    const transactions = await Transaction.find({});
-
-    let cardsSoldSystem = 0;
-    let cardsTraded = 0;
-
-    transactions.forEach((transaction) => {
-      if (transaction.transactionType === "direct") {
-        cardsSoldSystem += 1;
-      } else if (
-        transaction.transactionType === "resale" ||
-        transaction.transactionType === "gift"
-      ) {
-        cardsTraded += 1;
-      }
-    });
-    if (stats.length > 0) {
-      stats[0].cardsSoldSystem = cardsSoldSystem;
-      stats[0].cardsTraded = cardsTraded;
-      stats[0].createdAt = new Date(Date.now());
-      await stats[0].save();
-    } else {
-      await Stats.create({
-        cardsSoldSystem,
-        cardsTraded,
-      });
-    }
-  } catch (error) {
-    console.error("Không thể cập nhật thống kê:", error);
-  }
-});
-
 Payment.watch().on("change", async () => {
   try {
     const stats = await Stats.find({}).sort({ createdAt: "desc" }).limit(1);
@@ -271,41 +237,24 @@ Payment.watch().on("change", async () => {
 Transaction.watch().on("change", async () => {
   try {
     const stats = await Stats.find({}).sort({ createdAt: "desc" }).limit(1);
-
     const transactions = await Transaction.find({
-      transactionType: { $in: ["transfer", "direct", "resale", "gift"] },
+      transactionType: {
+        $in: ["transfer", "direct", "resale", "gift", "buypack"],
+      },
     });
 
-    let totalCoinsTransacted = transactions.reduce((acc, transaction) => {
-      return acc + (transaction.amount || transaction.price || 0);
-    }, 0);
-
-    if (isNaN(totalCoinsTransacted)) {
-      totalCoinsTransacted = 0;
-    }
-
-    stats[0].totalCoinsTransacted = totalCoinsTransacted;
-    stats[0].createdAt = new Date(Date.now());
-
-    await stats[0].save();
-  } catch (error) {
-    console.error("Không thể cập nhật thống kê:", error);
-  }
-});
-
-Transaction.watch().on("change", async () => {
-  try {
-    const stats = await Stats.find({}).sort({ createdAt: "desc" }).limit(1);
-    const transactions = await Transaction.find({});
-
+    let totalCoinsTransacted = 0;
     let cardsSoldSystem = 0;
     let cardsTraded = 0;
 
     transactions.forEach((transaction) => {
+      totalCoinsTransacted += transaction.price || 0;
+
       if (transaction.transactionType === "direct") {
         cardsSoldSystem++;
-      }
-      if (
+      } else if (transaction.transactionType === "buypack") {
+        cardsSoldSystem += transaction.amount || 0;
+      } else if (
         transaction.transactionType === "resale" ||
         transaction.transactionType === "gift"
       ) {
@@ -313,7 +262,12 @@ Transaction.watch().on("change", async () => {
       }
     });
 
+    if (isNaN(totalCoinsTransacted)) {
+      totalCoinsTransacted = 0;
+    }
+
     if (stats.length > 0) {
+      stats[0].totalCoinsTransacted = totalCoinsTransacted;
       stats[0].cardsSoldSystem = cardsSoldSystem;
       stats[0].cardsTraded = cardsTraded;
       stats[0].createdAt = new Date(Date.now());
@@ -321,10 +275,10 @@ Transaction.watch().on("change", async () => {
       await stats[0].save();
     } else {
       await Stats.create({
+        totalCoinsTransacted,
         cardsSoldSystem,
         cardsTraded,
         totalCoinsDeposited: 0,
-        totalCoinsTransacted: 0,
       });
     }
   } catch (error) {

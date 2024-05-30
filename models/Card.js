@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+
 const listingSchema = new mongoose.Schema({
   seller: {
     type: String,
@@ -17,6 +18,7 @@ const listingSchema = new mongoose.Schema({
     default: Date.now,
   },
 });
+
 const schema = new mongoose.Schema({
   name: {
     type: String,
@@ -35,7 +37,7 @@ const schema = new mongoose.Schema({
   },
   description: {
     type: String,
-    required: [true, "Vui lòng nhập tên thẻ"],
+    required: [true, "Vui lòng nhập mô tả thẻ"],
   },
   type: {
     type: String,
@@ -51,16 +53,15 @@ const schema = new mongoose.Schema({
       required: true,
     },
   },
-
   price: {
     type: Number,
     default: 1000,
   },
-  listings: [listingSchema],
-  createdAt: {
-    type: Date,
-    default: Date.now,
+  tier: {
+    type: Number,
+    default: 1,
   },
+  listings: [listingSchema],
   createdAt: {
     type: Date,
     default: Date.now,

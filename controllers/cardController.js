@@ -417,10 +417,28 @@ export const cancelSell = catchAsyncError(async (req, res, next) => {
     message: "Hủy rao bán thành công và thẻ đã được hoàn lại",
   });
 });
+export const categorizeCards = (cards) => {
+  const totalCards = cards.length;
+  const tier1 = cards.slice(0, Math.ceil(totalCards * 0.4));
+  const tier2 = cards.slice(
+    Math.ceil(totalCards * 0.4),
+    Math.ceil(totalCards * 0.6)
+  );
+  const tier3 = cards.slice(
+    Math.ceil(totalCards * 0.6),
+    Math.ceil(totalCards * 0.75)
+  );
+  const tier4 = cards.slice(
+    Math.ceil(totalCards * 0.75),
+    Math.ceil(totalCards * 0.9)
+  );
+  const tier5 = cards.slice(Math.ceil(totalCards * 0.9), totalCards);
 
+  return { tier1, tier2, tier3, tier4, tier5 };
+};
 export const updateCardPricesRandomly = async () => {
   try {
-    const cards = await Card.find({});
+    const cards = await Card.find({}).sort({ price: 1 });
 
     for (let card of cards) {
       const changeAmount = Math.floor(Math.random() * 10) + 1;
@@ -435,8 +453,153 @@ export const updateCardPricesRandomly = async () => {
       await card.save();
     }
 
-    console.log("Cập nhật giá thẻ thành công.");
+    const categorizedCards = categorizeCards(cards);
+
+    categorizedCards.tier1.forEach(async (card) => {
+      card.tier = 1;
+      await card.save();
+    });
+
+    categorizedCards.tier2.forEach(async (card) => {
+      card.tier = 2;
+      await card.save();
+    });
+
+    categorizedCards.tier3.forEach(async (card) => {
+      card.tier = 3;
+      await card.save();
+    });
+
+    categorizedCards.tier4.forEach(async (card) => {
+      card.tier = 4;
+      await card.save();
+    });
+
+    categorizedCards.tier5.forEach(async (card) => {
+      card.tier = 5;
+      await card.save();
+    });
+
+    console.log("Cập nhật giá và tier thẻ thành công.");
   } catch (error) {
-    console.error("Lỗi khi cập nhật giá thẻ:", error);
+    console.error("Lỗi khi cập nhật giá và tier thẻ:", error);
   }
 };
+
+
+
+const getRandomCardFromTier = (tier) => {
+  return tier[Math.floor(Math.random() * tier.length)];
+};
+
+const getPack = (
+  tier1,
+  tier2,
+  tier3,
+  tier4,
+  tier5,
+  packSize,
+  probabilities
+) => {
+  const pack = [];
+  for (let i = 0; i < packSize; i++) {
+    const randomNumber = Math.random() * 100;
+    if (randomNumber <= probabilities[0]) {
+      pack.push(getRandomCardFromTier(tier1));
+    } else if (randomNumber <= probabilities[0] + probabilities[1]) {
+      pack.push(getRandomCardFromTier(tier2));
+    } else if (
+      randomNumber <=
+      probabilities[0] + probabilities[1] + probabilities[2]
+    ) {
+      pack.push(getRandomCardFromTier(tier3));
+    } else if (
+      randomNumber <=
+      probabilities[0] + probabilities[1] + probabilities[2] + probabilities[3]
+    ) {
+      pack.push(getRandomCardFromTier(tier4));
+    } else {
+      pack.push(getRandomCardFromTier(tier5));
+    }
+  }
+  return pack;
+};
+
+export const buyCardPack = catchAsyncError(async (req, res, next) => {
+  const { packType } = req.body;
+  const userId = req.user._id;
+
+  const user = await User.findById(userId).select("+coin");
+
+  const packPrices = {
+    3000: 3000,
+    5000: 5000,
+    10000: 10000,
+  };
+
+  const packSizes = {
+    3000: 3,
+    5000: 5,
+    10000: 10,
+  };
+
+  const packProbabilities = {
+    3000: [40, 20, 15, 15, 10],
+    5000: [25, 20, 20, 20, 15],
+    10000: [10, 20, 20, 20, 30],
+  };
+
+  if (!packPrices[packType] || user.coin < packPrices[packType]) {
+    return res.status(400).json({
+      success: false,
+      message: "Người dùng không đủ coin để mua gói thẻ",
+    });
+  }
+
+  const cards = await Card.find({}).sort({ price: 1 });
+  const { tier1, tier2, tier3, tier4, tier5 } = categorizeCards(cards);
+
+  const pack = getPack(
+    tier1,
+    tier2,
+    tier3,
+    tier4,
+    tier5,
+    packSizes[packType],
+    packProbabilities[packType]
+  );
+
+  for (const card of pack) {
+    const existingCardIndex = user.myCard.findIndex(
+      (item) => item.card.toString() === card._id.toString()
+    );
+    if (existingCardIndex > -1) {
+      user.myCard[existingCardIndex].total += 1;
+    } else {
+      user.myCard.push({
+        card: card._id,
+        image: card.image.url,
+        name: card.name,
+        total: 1,
+      });
+    }
+    card.total -= 1;
+    await card.save();
+  }
+
+  user.coin -= packPrices[packType];
+  await user.save();
+
+  await Transaction.create({
+    buyer: user._id,
+    price: packPrices[packType],
+    transactionType: "buypack",
+    amount: packSizes[packType],
+  });
+
+  res.status(200).json({
+    success: true,
+    pack,
+    message: "Mua gói thẻ thành công",
+  });
+});

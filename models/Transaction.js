@@ -30,7 +30,7 @@ const transactionSchema = new mongoose.Schema({
   },
   transactionType: {
     type: String,
-    enum: ["direct", "resale", "gift", "transfer"],
+    enum: ["direct", "resale", "gift", "transfer","buypack"],
     default: "direct",
   },
   recipient: {
