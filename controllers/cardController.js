@@ -419,25 +419,28 @@ export const cancelSell = catchAsyncError(async (req, res, next) => {
 });
 export const categorizeCards = (cards) => {
   const totalCards = cards.length;
-  const tier1 = cards.slice(0, Math.ceil(totalCards * 0.4));
+
+  const tier1 = cards.slice(0, Math.ceil(totalCards * 0.2));
   const tier2 = cards.slice(
+    Math.ceil(totalCards * 0.2),
+    Math.ceil(totalCards * 0.4)
+  );
+  const tier3 = cards.slice(
     Math.ceil(totalCards * 0.4),
     Math.ceil(totalCards * 0.6)
   );
-  const tier3 = cards.slice(
-    Math.ceil(totalCards * 0.6),
-    Math.ceil(totalCards * 0.75)
-  );
   const tier4 = cards.slice(
-    Math.ceil(totalCards * 0.75),
-    Math.ceil(totalCards * 0.9)
+    Math.ceil(totalCards * 0.6),
+    Math.ceil(totalCards * 0.8)
   );
-  const tier5 = cards.slice(Math.ceil(totalCards * 0.9), totalCards);
+  const tier5 = cards.slice(Math.ceil(totalCards * 0.8), totalCards);
 
   return { tier1, tier2, tier3, tier4, tier5 };
 };
+
 export const updateCardPricesRandomly = async () => {
   try {
+    // Fetch cards sorted by price in ascending order
     const cards = await Card.find({}).sort({ price: 1 });
 
     for (let card of cards) {
@@ -453,40 +456,40 @@ export const updateCardPricesRandomly = async () => {
       await card.save();
     }
 
-    const categorizedCards = categorizeCards(cards);
 
-    categorizedCards.tier1.forEach(async (card) => {
+    const updatedCards = await Card.find({}).sort({ price: 1 });
+    const categorizedCards = categorizeCards(updatedCards);
+
+    for (let card of categorizedCards.tier1) {
       card.tier = 1;
       await card.save();
-    });
+    }
 
-    categorizedCards.tier2.forEach(async (card) => {
+    for (let card of categorizedCards.tier2) {
       card.tier = 2;
       await card.save();
-    });
+    }
 
-    categorizedCards.tier3.forEach(async (card) => {
+    for (let card of categorizedCards.tier3) {
       card.tier = 3;
       await card.save();
-    });
+    }
 
-    categorizedCards.tier4.forEach(async (card) => {
+    for (let card of categorizedCards.tier4) {
       card.tier = 4;
       await card.save();
-    });
+    }
 
-    categorizedCards.tier5.forEach(async (card) => {
+    for (let card of categorizedCards.tier5) {
       card.tier = 5;
       await card.save();
-    });
+    }
 
     console.log("Cập nhật giá và tier thẻ thành công.");
   } catch (error) {
     console.error("Lỗi khi cập nhật giá và tier thẻ:", error);
   }
 };
-
-
 
 const getRandomCardFromTier = (tier) => {
   return tier[Math.floor(Math.random() * tier.length)];
@@ -533,20 +536,20 @@ export const buyCardPack = catchAsyncError(async (req, res, next) => {
 
   const packPrices = {
     3000: 3000,
-    5000: 5000,
-    10000: 10000,
+    7000: 7000,
+    15000: 15000,
   };
 
   const packSizes = {
     3000: 3,
-    5000: 5,
-    10000: 10,
+    7000: 5,
+    15000: 10,
   };
 
   const packProbabilities = {
-    3000: [60, 20, 10, 7, 3],
-    5000: [40, 25, 20, 8, 7],
-    10000: [5, 15, 30, 30, 20],
+    3000: [69, 20, 10, 7, 1],
+    7000: [44, 25, 20, 8, 3],
+    15000: [15, 28, 30, 20, 7],
   };
 
   if (!packPrices[packType] || user.coin < packPrices[packType]) {

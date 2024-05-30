@@ -75,7 +75,10 @@ export const Logout = catchAsyncError(async (req, res, next) => {
 });
 
 export const getMyProfile = catchAsyncError(async (req, res, next) => {
-  const user = await User.findById(req.user._id);
+  const user = await User.findById(req.user._id).populate({
+    path: "myCard.card",
+    select: "price tier",
+  });
 
   res.status(200).json({
     success: true,

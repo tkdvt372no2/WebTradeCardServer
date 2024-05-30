@@ -30,6 +30,7 @@ nodeCron.schedule("0 0 0 1 * *", async () => {
 });
 
 nodeCron.schedule("0 0 * * *", updateCardPricesRandomly);
+
 app.listen(process.env.PORT, () => {
   console.log("Server listening on port " + process.env.PORT);
 });
