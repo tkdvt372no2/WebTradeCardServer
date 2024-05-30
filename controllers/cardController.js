@@ -544,9 +544,9 @@ export const buyCardPack = catchAsyncError(async (req, res, next) => {
   };
 
   const packProbabilities = {
-    3000: [40, 20, 15, 15, 10],
-    5000: [25, 20, 20, 20, 15],
-    10000: [10, 20, 20, 20, 30],
+    3000: [60, 20, 10, 7, 3],
+    5000: [40, 25, 20, 8, 7],
+    10000: [5, 15, 30, 30, 20],
   };
 
   if (!packPrices[packType] || user.coin < packPrices[packType]) {
