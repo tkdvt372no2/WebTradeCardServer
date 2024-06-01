@@ -18,10 +18,10 @@ import {
   updateUserRole,
 } from "../controllers/userController.js";
 import { authorizeAdmin, isAuthenticated } from "../middlewares/auth.js";
-import multipleUpload from "../middlewares/multer.js";
+import multipleUpload, { singleUpload } from "../middlewares/multer.js";
 const router = express.Router();
 
-router.post("/register", multipleUpload, Register);
+router.post("/register", singleUpload, Register);
 
 router.route("/transfer-coins").post(isAuthenticated, transferCoins);
 

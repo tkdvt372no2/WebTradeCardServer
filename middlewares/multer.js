@@ -7,3 +7,5 @@ const multipleUpload = multer({
 }).array("files", 10);
 
 export default multipleUpload;
+
+export const singleUpload = multer({ storage }).single("file");

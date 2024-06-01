@@ -13,9 +13,6 @@ import { Transaction } from "../models/Transaction.js";
 export const Register = catchAsyncError(async (req, res, next) => {
   const { name, email, password, username } = req.body;
   const file = req.file;
-  console.log(name)
-  console.log(email)
-  console.log(password)
   if (!name || !email || !password || !username || !file)
     return next(new ErrorHandler("Vui lòng nhập đầy đủ thông tin!", 400));
 
@@ -50,7 +47,10 @@ export const Register = catchAsyncError(async (req, res, next) => {
   });
 
   await updateCardTotals(randomCards);
-
+  await user.populate({
+    path: "myCard.card",
+    select: "price tier",
+  });
   sendToken(res, user, "Đăng ký thành công", 201);
 });
 
@@ -59,7 +59,10 @@ export const Login = catchAsyncError(async (req, res, next) => {
 
   if (!email || !password)
     return next(new ErrorHandler("Vui lòng nhập đầy đủ thông tin!", 400));
-  let user = await User.findOne({ email }).select("+password");
+  let user = await User.findOne({ email }).select("+password").populate({
+    path: "myCard.card",
+    select: "price tier",
+  });
   if (!user) {
     return next(new ErrorHandler("Tài khoản không tồn tại", 409));
   }
@@ -70,12 +73,13 @@ export const Login = catchAsyncError(async (req, res, next) => {
   sendToken(res, user, `Chào mừng bạn trở lại, ${user.name}`, 200);
 });
 
-
 export const findUserByUsername = async (req, res) => {
   try {
     const user = await User.findOne({ username: req.params.username });
     if (!user) {
-      return res.status(404).json({ success: false, message: "User not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found" });
     }
     res.status(200).json({ success: true, user });
   } catch (error) {

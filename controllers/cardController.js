@@ -256,7 +256,10 @@ export const sellCard = catchAsyncError(async (req, res, next) => {
 });
 
 export const getRandomCards = async () => {
-  const cards = await Card.aggregate([{ $sample: { size: 5 } }]);
+  const cards = await Card.aggregate([
+    { $match: { tier: 1 } },
+    { $sample: { size: 5 } },
+  ]);
   return cards;
 };
 
@@ -454,7 +457,6 @@ export const updateCardPricesRandomly = async () => {
 
       await card.save();
     }
-
 
     const updatedCards = await Card.find({}).sort({ price: 1 });
     const categorizedCards = categorizeCards(updatedCards);

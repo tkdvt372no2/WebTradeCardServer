@@ -160,7 +160,7 @@ export const deletePost = catchAsyncError(async (req, res, next) => {
 });
 
 export const addComment = catchAsyncError(async (req, res, next) => {
-  const { content, mentions } = req.body;
+  const { content } = req.body;
   const files = req.files;
   const post = await Post.findById(req.params.id);
 
@@ -201,19 +201,40 @@ export const addComment = catchAsyncError(async (req, res, next) => {
   post.comments.push(comment);
   await post.save();
 
+  // Thông báo tới các người dùng được tag
+  const mentionedUsers = content.match(/@\w+/g);
+  if (mentionedUsers) {
+    for (let username of mentionedUsers) {
+      const user = await User.findOne({ username: username.slice(1) });
+      if (user) {
+        await createNotification(
+          user._id,
+          req.user._id,
+          `${req.user.username} đã tag bạn trong một bình luận.`,
+          post._id
+        );
+      }
+    }
+  }
+
   const updatedPost = await Post.findById(req.params.id)
     .populate("author", "name username avatar")
     .populate({
       path: "comments",
       populate: [
         { path: "user", select: "name username avatar" },
+        { path: "likes", select: "name username avatar" },
         {
           path: "replies",
           populate: [
             { path: "user", select: "name username avatar" },
+            { path: "likes", select: "name username avatar" },
             {
               path: "reactions",
-              populate: { path: "user", select: "name username avatar" },
+              populate: [
+                { path: "user", select: "name username avatar" },
+                { path: "likes", select: "name username avatar" },
+              ],
             },
           ],
         },
@@ -273,6 +294,29 @@ export const replyComment = catchAsyncError(async (req, res, next) => {
   await comment.save();
   await post.save();
 
+  // Thông báo tới người nhận trả lời và người được tag
+  await createNotification(
+    comment.user,
+    req.user._id,
+    `${req.user.username} đã trả lời bình luận của bạn.`,
+    post._id
+  );
+
+  const mentionedUsers = content.match(/@\w+/g);
+  if (mentionedUsers) {
+    for (let username of mentionedUsers) {
+      const user = await User.findOne({ username: username.slice(1) });
+      if (user) {
+        await createNotification(
+          user._id,
+          req.user._id,
+          `${req.user.username} đã tag bạn trong một trả lời.`,
+          post._id
+        );
+      }
+    }
+  }
+
   const updatedPost = await Post.findById(req.params.id)
     .populate("author", "name username avatar")
     .populate({
@@ -287,7 +331,10 @@ export const replyComment = catchAsyncError(async (req, res, next) => {
             { path: "likes", select: "name username avatar" },
             {
               path: "reactions",
-              populate: { path: "user", select: "name username avatar" },
+              populate: [
+                { path: "user", select: "name username avatar" },
+                { path: "likes", select: "name username avatar" },
+              ],
             },
           ],
         },
@@ -313,28 +360,55 @@ export const likeComment = catchAsyncError(async (req, res, next) => {
     return next(new ErrorHandler("Bình luận không tồn tại", 404));
   }
 
+  let isFirstLike = false;
+
   if (comment.likes.includes(req.user._id)) {
     comment.likes.pull(req.user._id);
   } else {
     comment.likes.push(req.user._id);
+
+    const existingNotification = await Notification.findOne({
+      user: comment.user,
+      from: req.user._id,
+      commentId: comment._id,
+      message: `${req.user.username} đã thả tim bình luận của bạn.`,
+    });
+
+    if (!existingNotification) {
+      isFirstLike = true;
+    }
   }
 
   await comment.save();
   await post.save();
 
-  const updatedPost = await Post.findById(postId)
+  if (isFirstLike) {
+    await createNotification(
+      comment.user,
+      req.user._id,
+      `${req.user.username} đã thả tim bình luận của bạn.`,
+      post._id
+    );
+  }
+
+  const updatedPost = await Post.findById(req.params.id)
     .populate("author", "name username avatar")
     .populate({
       path: "comments",
       populate: [
         { path: "user", select: "name username avatar" },
+        { path: "likes", select: "name username avatar" },
         {
           path: "replies",
           populate: [
             { path: "user", select: "name username avatar" },
+            { path: "likes", select: "name username avatar" },
             {
               path: "reactions",
-              populate: { path: "user", select: "name username avatar" },
+              populate: [
+                { path: "user", select: "name username avatar" },
+                { path: "likes", select: "name username avatar" },
+              ],
             },
           ],
         },
@@ -355,7 +429,6 @@ export const replyReply = catchAsyncError(async (req, res, next) => {
   if (!post) {
     return next(new ErrorHandler("Bài đăng không tồn tại", 404));
   }
-  console.log(replyId);
   const reply = await Reply.findById(replyId);
   if (!reply) {
     return next(new ErrorHandler("Trả lời không tồn tại", 404));
@@ -392,6 +465,29 @@ export const replyReply = catchAsyncError(async (req, res, next) => {
   reply.reactions.push(newReaction._id);
   await reply.save();
 
+  // Thông báo tới người nhận trả lời và người được tag
+  await createNotification(
+    reply.user,
+    req.user._id,
+    `${req.user.username} đã trả lời phản hồi của bạn.`,
+    post._id
+  );
+
+  const mentionedUsers = content.match(/@\w+/g);
+  if (mentionedUsers) {
+    for (let username of mentionedUsers) {
+      const user = await User.findOne({ username: username.slice(1) });
+      if (user) {
+        await createNotification(
+          user._id,
+          req.user._id,
+          `${req.user.username} đã tag bạn trong một trả lời.`,
+          post._id
+        );
+      }
+    }
+  }
+
   const updatedPost = await Post.findById(req.params.id)
     .populate("author", "name username avatar")
     .populate({
@@ -406,7 +502,10 @@ export const replyReply = catchAsyncError(async (req, res, next) => {
             { path: "likes", select: "name username avatar" },
             {
               path: "reactions",
-              populate: { path: "user", select: "name username avatar" },
+              populate: [
+                { path: "user", select: "name username avatar" },
+                { path: "likes", select: "name username avatar" },
+              ],
             },
           ],
         },
@@ -432,14 +531,36 @@ export const likeReply = catchAsyncError(async (req, res, next) => {
     return next(new ErrorHandler("Trả lời không tồn tại", 404));
   }
 
+  let isFirstLike = false;
+
   if (reply.likes.includes(req.user._id)) {
     reply.likes.pull(req.user._id);
   } else {
     reply.likes.push(req.user._id);
+
+    const existingNotification = await Notification.findOne({
+      user: reply.user,
+      from: req.user._id,
+      replyId: reply._id,
+      message: `${req.user.username} đã thả tim phản hồi của bạn.`,
+    });
+
+    if (!existingNotification) {
+      isFirstLike = true;
+    }
   }
 
   await reply.save();
   await post.save();
+
+  if (isFirstLike) {
+    await createNotification(
+      reply.user,
+      req.user._id,
+      `${req.user.username} đã thả tim phản hồi của bạn.`,
+      post._id
+    );
+  }
 
   const updatedPost = await Post.findById(postId)
     .populate("author", "name username avatar")
@@ -495,19 +616,37 @@ export const likePost = catchAsyncError(async (req, res, next) => {
   await post.save();
 
   if (isFirstLike) {
-    await Notification.create({
-      user: post.author,
-      from: req.user._id,
-      message: `${req.user.username} đã thả tim bài viết của bạn.`,
-      postId: post._id,
-    });
+    await createNotification(
+      post.author,
+      req.user._id,
+      `${req.user.username} đã thả tim bài viết của bạn.`,
+      post._id
+    );
   }
 
   const updatedPost = await Post.findById(req.params.id)
     .populate("author", "name username avatar")
-    .populate("comments.user", "name username avatar")
-    .populate("category", "name");
-
+    .populate({
+      path: "comments",
+      populate: [
+        { path: "user", select: "name username avatar" },
+        { path: "likes", select: "name username avatar" },
+        {
+          path: "replies",
+          populate: [
+            { path: "user", select: "name username avatar" },
+            { path: "likes", select: "name username avatar" },
+            {
+              path: "reactions",
+              populate: [
+                { path: "user", select: "name username avatar" },
+                { path: "likes", select: "name username avatar" },
+              ],
+            },
+          ],
+        },
+      ],
+    });
   res.status(200).json({
     success: true,
     post: updatedPost,
@@ -625,3 +764,13 @@ export const deleteCategory = catchAsyncError(async (req, res, next) => {
     message: "Xóa danh mục thành công",
   });
 });
+
+const createNotification = async (userId, fromUserId, message, postId) => {
+  const notification = new Notification({
+    user: userId,
+    from: fromUserId,
+    message,
+    postId,
+  });
+  await notification.save();
+};
