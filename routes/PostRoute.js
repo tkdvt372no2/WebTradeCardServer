@@ -7,9 +7,11 @@ import {
   updatePost,
   deletePost,
   addComment,
-  likePost,
-  likeComment, // Thêm hàm likeComment
   replyComment,
+  likePost,
+  likeComment,
+  replyReply,
+  likeReply,
   clearReadNotifications,
   readNotification,
   tagUser,
@@ -35,17 +37,21 @@ router.post(
   multipleUpload,
   replyComment
 );
-
-// Thêm route cho việc like comment/reply
+router.post(
+  "/posts/:id/comments/reply/reply",
+  isAuthenticated,
+  multipleUpload,
+  replyReply
+);
 router.put(
   "/posts/:postId/comments/:commentId/like",
   isAuthenticated,
   likeComment
 );
 router.put(
-  "/posts/:postId/comments/:commentId/replies/:replyId/like",
+  "/posts/:postId/comments/replies/:replyId/like",
   isAuthenticated,
-  likeComment
+  likeReply
 );
 
 router.put("/posts/:id/like", isAuthenticated, likePost);

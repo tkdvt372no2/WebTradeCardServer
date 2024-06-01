@@ -1,6 +1,6 @@
 import { catchAsyncError } from "../middlewares/CatchAsyncError.js";
 import ErrorHandler from "../utils/errorHandler.js";
-import { Post } from "../models/Post.js";
+import { Comment, Post, Reaction, Reply } from "../models/Post.js";
 import { User } from "../models/User.js";
 import { Notification } from "../models/Notification.js";
 import cloudinary from "cloudinary";
@@ -48,7 +48,29 @@ export const createPost = catchAsyncError(async (req, res, next) => {
 export const getAllPosts = catchAsyncError(async (req, res, next) => {
   const posts = await Post.find()
     .populate("author", "name username avatar")
-    .populate("category", "name");
+    .populate("category", "name")
+    .populate({
+      path: "comments",
+      populate: [
+        { path: "user", select: "name username avatar" },
+        { path: "likes", select: "name username avatar" },
+        {
+          path: "replies",
+          populate: [
+            { path: "user", select: "name username avatar" },
+            { path: "likes", select: "name username avatar" },
+            {
+              path: "reactions",
+              populate: [
+                { path: "user", select: "name username avatar" },
+                { path: "likes", select: "name username avatar" },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
   res.status(200).json({
     success: true,
     posts,
@@ -58,8 +80,27 @@ export const getAllPosts = catchAsyncError(async (req, res, next) => {
 export const getPostDetails = catchAsyncError(async (req, res, next) => {
   const post = await Post.findById(req.params.id)
     .populate("author", "name username avatar")
-    .populate("comments.user", "name username avatar")
-    .populate("comments.replies.user", "name username avatar");
+    .populate({
+      path: "comments",
+      populate: [
+        { path: "user", select: "name username avatar" },
+        { path: "likes", select: "name username avatar" },
+        {
+          path: "replies",
+          populate: [
+            { path: "user", select: "name username avatar" },
+            { path: "likes", select: "name username avatar" },
+            {
+              path: "reactions",
+              populate: [
+                { path: "user", select: "name username avatar" },
+                { path: "likes", select: "name username avatar" },
+              ],
+            },
+          ],
+        },
+      ],
+    });
 
   if (!post) {
     return next(new ErrorHandler("Bài đăng không tồn tại", 404));
@@ -127,13 +168,19 @@ export const addComment = catchAsyncError(async (req, res, next) => {
     return next(new ErrorHandler("Bài đăng không tồn tại", 404));
   }
 
-  const comment = {
+  if (!content || !req.user._id) {
+    return next(
+      new ErrorHandler("Nội dung bình luận và người dùng là bắt buộc", 400)
+    );
+  }
+
+  const comment = new Comment({
     user: req.user._id,
     content,
     media: [],
     likes: [],
-    replies: [], // Đảm bảo replies luôn là một mảng
-  };
+    replies: [],
+  });
 
   if (files && files.length > 0) {
     for (let file of files) {
@@ -149,37 +196,38 @@ export const addComment = catchAsyncError(async (req, res, next) => {
     }
   }
 
+  await comment.save();
+
   post.comments.push(comment);
   await post.save();
 
-  if (req.user._id.toString() !== post.author.toString()) {
-    await Notification.create({
-      user: post.author,
-      from: req.user._id,
-      message: `${req.user.username} đã bình luận về bài viết của bạn.`,
-      postId: post._id,
+  const updatedPost = await Post.findById(req.params.id)
+    .populate("author", "name username avatar")
+    .populate({
+      path: "comments",
+      populate: [
+        { path: "user", select: "name username avatar" },
+        {
+          path: "replies",
+          populate: [
+            { path: "user", select: "name username avatar" },
+            {
+              path: "reactions",
+              populate: { path: "user", select: "name username avatar" },
+            },
+          ],
+        },
+      ],
     });
-
-    if (mentions && mentions.length > 0) {
-      for (const mention of mentions) {
-        await Notification.create({
-          user: mention,
-          from: req.user._id,
-          message: `${req.user.username} đã nhắc đến bạn trong một bình luận.`,
-          postId: post._id,
-        });
-      }
-    }
-  }
 
   res.status(201).json({
     success: true,
-    post,
+    post: updatedPost,
   });
 });
 
 export const replyComment = catchAsyncError(async (req, res, next) => {
-  const { content, commentId, replyId } = req.body;
+  const { content, commentId } = req.body;
   const files = req.files;
   const post = await Post.findById(req.params.id);
 
@@ -187,26 +235,24 @@ export const replyComment = catchAsyncError(async (req, res, next) => {
     return next(new ErrorHandler("Bài đăng không tồn tại", 404));
   }
 
-  const comment = post.comments.id(commentId);
+  const comment = await Comment.findById(commentId);
   if (!comment) {
     return next(new ErrorHandler("Bình luận không tồn tại", 404));
   }
 
-  let targetReply = comment;
-  if (replyId) {
-    targetReply = comment.replies.id(replyId);
-    if (!targetReply) {
-      return next(new ErrorHandler("Trả lời không tồn tại", 404));
-    }
+  if (!content || !req.user._id) {
+    return next(
+      new ErrorHandler("Nội dung trả lời và người dùng là bắt buộc", 400)
+    );
   }
 
-  const reply = {
+  const reply = new Reply({
     user: req.user._id,
     content,
     media: [],
     likes: [],
-    replies: [], // Đảm bảo replies luôn là một mảng
-  };
+    reactions: [],
+  });
 
   if (files && files.length > 0) {
     for (let file of files) {
@@ -222,58 +268,201 @@ export const replyComment = catchAsyncError(async (req, res, next) => {
     }
   }
 
-  targetReply.replies.push(reply);
+  await reply.save();
+  comment.replies.push(reply._id);
+  await comment.save();
   await post.save();
 
-  if (req.user._id.toString() !== targetReply.user.toString()) {
-    await Notification.create({
-      user: targetReply.user,
-      from: req.user._id,
-      message: `${req.user.username} đã trả lời bình luận của bạn.`,
-      postId: post._id,
-      commentId: comment._id,
-      replyId: targetReply._id,
+  const updatedPost = await Post.findById(req.params.id)
+    .populate("author", "name username avatar")
+    .populate({
+      path: "comments",
+      populate: [
+        { path: "user", select: "name username avatar" },
+        { path: "likes", select: "name username avatar" },
+        {
+          path: "replies",
+          populate: [
+            { path: "user", select: "name username avatar" },
+            { path: "likes", select: "name username avatar" },
+            {
+              path: "reactions",
+              populate: { path: "user", select: "name username avatar" },
+            },
+          ],
+        },
+      ],
     });
-  }
 
   res.status(201).json({
     success: true,
-    post,
+    post: updatedPost,
   });
 });
 
 export const likeComment = catchAsyncError(async (req, res, next) => {
-  const { postId, commentId, replyId } = req.params;
+  const { postId, commentId } = req.params;
   const post = await Post.findById(postId);
 
   if (!post) {
     return next(new ErrorHandler("Bài đăng không tồn tại", 404));
   }
 
-  const comment = post.comments.id(commentId);
+  const comment = await Comment.findById(commentId);
   if (!comment) {
     return next(new ErrorHandler("Bình luận không tồn tại", 404));
   }
 
-  let target = comment;
-  if (replyId) {
-    target = comment.replies.id(replyId);
-    if (!target) {
-      return next(new ErrorHandler("Trả lời không tồn tại", 404));
-    }
-  }
-
-  if (target.likes.includes(req.user._id)) {
-    target.likes.pull(req.user._id);
+  if (comment.likes.includes(req.user._id)) {
+    comment.likes.pull(req.user._id);
   } else {
-    target.likes.push(req.user._id);
+    comment.likes.push(req.user._id);
   }
 
+  await comment.save();
   await post.save();
+
+  const updatedPost = await Post.findById(postId)
+    .populate("author", "name username avatar")
+    .populate({
+      path: "comments",
+      populate: [
+        { path: "user", select: "name username avatar" },
+        {
+          path: "replies",
+          populate: [
+            { path: "user", select: "name username avatar" },
+            {
+              path: "reactions",
+              populate: { path: "user", select: "name username avatar" },
+            },
+          ],
+        },
+      ],
+    });
 
   res.status(200).json({
     success: true,
-    post,
+    post: updatedPost,
+  });
+});
+
+export const replyReply = catchAsyncError(async (req, res, next) => {
+  const { content, replyId } = req.body;
+  const files = req.files;
+  const post = await Post.findById(req.params.id);
+
+  if (!post) {
+    return next(new ErrorHandler("Bài đăng không tồn tại", 404));
+  }
+  console.log(replyId);
+  const reply = await Reply.findById(replyId);
+  if (!reply) {
+    return next(new ErrorHandler("Trả lời không tồn tại", 404));
+  }
+
+  if (!content || !req.user._id) {
+    return next(
+      new ErrorHandler("Nội dung trả lời và người dùng là bắt buộc", 400)
+    );
+  }
+
+  const newReaction = new Reaction({
+    user: req.user._id,
+    content,
+    media: [],
+    likes: [],
+  });
+
+  if (files && files.length > 0) {
+    for (let file of files) {
+      const fileUri = getDataUri(file);
+      const mycloud = await cloudinary.v2.uploader.upload(fileUri.content, {
+        resource_type: "auto",
+      });
+      newReaction.media.push({
+        public_id: mycloud.public_id,
+        url: mycloud.secure_url,
+        type: file.mimetype.startsWith("image") ? "image" : "video",
+      });
+    }
+  }
+
+  await newReaction.save();
+  reply.reactions.push(newReaction._id);
+  await reply.save();
+
+  const updatedPost = await Post.findById(req.params.id)
+    .populate("author", "name username avatar")
+    .populate({
+      path: "comments",
+      populate: [
+        { path: "user", select: "name username avatar" },
+        { path: "likes", select: "name username avatar" },
+        {
+          path: "replies",
+          populate: [
+            { path: "user", select: "name username avatar" },
+            { path: "likes", select: "name username avatar" },
+            {
+              path: "reactions",
+              populate: { path: "user", select: "name username avatar" },
+            },
+          ],
+        },
+      ],
+    });
+
+  res.status(201).json({
+    success: true,
+    post: updatedPost,
+  });
+});
+
+export const likeReply = catchAsyncError(async (req, res, next) => {
+  const { postId, replyId } = req.params;
+  const post = await Post.findById(postId);
+
+  if (!post) {
+    return next(new ErrorHandler("Bài đăng không tồn tại", 404));
+  }
+
+  const reply = await Reply.findById(replyId);
+  if (!reply) {
+    return next(new ErrorHandler("Trả lời không tồn tại", 404));
+  }
+
+  if (reply.likes.includes(req.user._id)) {
+    reply.likes.pull(req.user._id);
+  } else {
+    reply.likes.push(req.user._id);
+  }
+
+  await reply.save();
+  await post.save();
+
+  const updatedPost = await Post.findById(postId)
+    .populate("author", "name username avatar")
+    .populate({
+      path: "comments",
+      populate: [
+        { path: "user", select: "name username avatar" },
+        {
+          path: "replies",
+          populate: [
+            { path: "user", select: "name username avatar" },
+            {
+              path: "reactions",
+              populate: { path: "user", select: "name username avatar" },
+            },
+          ],
+        },
+      ],
+    });
+
+  res.status(200).json({
+    success: true,
+    post: updatedPost,
   });
 });
 
