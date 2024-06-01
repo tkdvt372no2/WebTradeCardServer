@@ -440,7 +440,6 @@ export const categorizeCards = (cards) => {
 
 export const updateCardPricesRandomly = async () => {
   try {
-    // Fetch cards sorted by price in ascending order
     const cards = await Card.find({}).sort({ price: 1 });
 
     for (let card of cards) {

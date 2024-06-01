@@ -90,7 +90,7 @@ export const getUserTransactions = catchAsyncError(async (req, res, next) => {
         startDate = new Date(now.getFullYear(), now.getMonth(), 1);
         break;
       default:
-        startDate = new Date(0); // Lấy tất cả các giao dịch
+        startDate = new Date(0);
     }
 
     const transactions = await Payment.find({
@@ -131,7 +131,7 @@ export const getUserCardTransactions = catchAsyncError(
           startDate = new Date(now.getFullYear(), now.getMonth(), 1);
           break;
         default:
-          startDate = new Date(0); // Lấy tất cả các giao dịch
+          startDate = new Date(0);
       }
 
       const transactions = await Transaction.find({

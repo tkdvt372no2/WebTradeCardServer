@@ -1,7 +1,9 @@
-import multer from 'multer'
+import multer from "multer";
 
 const storage = multer.memoryStorage();
+const multipleUpload = multer({
+  storage,
+  limits: { fileSize: 50 * 1024 * 1024 },
+}).array("files", 10);
 
-const singleUpload= multer({storage}).single("file")
-
-export default singleUpload
+export default multipleUpload;

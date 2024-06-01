@@ -9,6 +9,11 @@ const schema = new mongoose.Schema({
     type: String,
     required: [true, "Vui lòng nhập tên của bạn"],
   },
+  username: {
+    type: String,
+    required: [true, "Vui lòng nhập tên người dùng"],
+    unique: true,
+  },
   email: {
     type: String,
     required: [true, "Vui lòng nhập email của bạn"],
@@ -30,7 +35,6 @@ const schema = new mongoose.Schema({
     enum: ["admin", "user"],
     default: "user",
   },
-
   avatar: {
     public_id: {
       type: String,
@@ -41,7 +45,6 @@ const schema = new mongoose.Schema({
       required: true,
     },
   },
-
   coin: {
     type: Number,
     default: 0,
@@ -64,7 +67,6 @@ const schema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
-
   resetPasswordToken: String,
   resetPasswordExpire: String,
 });
@@ -80,6 +82,7 @@ schema.methods.getJWTToken = function () {
     }
   );
 };
+
 schema.pre("save", async function (next) {
   if (!this.isModified("password")) return next();
   this.password = await bcrypt.hash(this.password, 10);
@@ -99,6 +102,7 @@ schema.pre("save", async function (next) {
 schema.methods.comparePassword = async function (password) {
   return await bcrypt.compare(password, this.password);
 };
+
 schema.methods.getResetToken = function () {
   const resetToken = crypto.randomBytes(20).toString("hex");
   this.resetPasswordToken = crypto
@@ -110,5 +114,3 @@ schema.methods.getResetToken = function () {
 };
 
 export const User = mongoose.model("User", schema);
-
-

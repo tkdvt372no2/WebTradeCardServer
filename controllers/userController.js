@@ -11,15 +11,22 @@ import { getRandomCards, updateCardTotals } from "./cardController.js";
 import { Transaction } from "../models/Transaction.js";
 
 export const Register = catchAsyncError(async (req, res, next) => {
-  const { name, email, password } = req.body;
+  const { name, email, password, username } = req.body;
   const file = req.file;
-
-  if (!name || !email || !password || !file)
+  console.log(name)
+  console.log(email)
+  console.log(password)
+  if (!name || !email || !password || !username || !file)
     return next(new ErrorHandler("Vui lòng nhập đầy đủ thông tin!", 400));
 
   let user = await User.findOne({ email });
   if (user) {
     return next(new ErrorHandler("Tài khoản của bạn đã tồn tại", 409));
+  }
+
+  user = await User.findOne({ username });
+  if (user) {
+    return next(new ErrorHandler("Tên người dùng đã tồn tại", 409));
   }
 
   const fileUri = getDataUri(file);
@@ -30,6 +37,7 @@ export const Register = catchAsyncError(async (req, res, next) => {
     name,
     email,
     password,
+    username,
     avatar: {
       public_id: mycloud.public_id,
       url: mycloud.secure_url,
@@ -61,6 +69,19 @@ export const Login = catchAsyncError(async (req, res, next) => {
     return next(new ErrorHandler("Email hoặc mật khẩu không chính xác", 401));
   sendToken(res, user, `Chào mừng bạn trở lại, ${user.name}`, 200);
 });
+
+
+export const findUserByUsername = async (req, res) => {
+  try {
+    const user = await User.findOne({ username: req.params.username });
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+    res.status(200).json({ success: true, user });
+  } catch (error) {
+    res.status(400).json({ success: false, error: error.message });
+  }
+};
 
 export const Logout = catchAsyncError(async (req, res, next) => {
   res

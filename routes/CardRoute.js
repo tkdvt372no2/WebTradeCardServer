@@ -10,7 +10,7 @@ import {
   cancelSell,
   buyCardPack,
 } from "../controllers/cardController.js";
-import singleUpload from "../middlewares/multer.js";
+import multipleUpload from "../middlewares/multer.js";
 import { authorizeAdmin, isAuthenticated } from "../middlewares/auth.js";
 
 const router = express.Router();
@@ -35,7 +35,7 @@ router.post(
   "/create-card",
   isAuthenticated,
   authorizeAdmin,
-  singleUpload,
+  multipleUpload,
   createCard
 );
 

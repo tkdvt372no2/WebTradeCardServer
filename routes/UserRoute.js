@@ -6,6 +6,7 @@ import {
   changePassword,
   deleteMyProfile,
   deleteUser,
+  findUserByUsername,
   forgetPassword,
   getAdminStats,
   getAllUsers,
@@ -17,12 +18,14 @@ import {
   updateUserRole,
 } from "../controllers/userController.js";
 import { authorizeAdmin, isAuthenticated } from "../middlewares/auth.js";
-import singleUpload from "../middlewares/multer.js";
+import multipleUpload from "../middlewares/multer.js";
 const router = express.Router();
 
-router.post("/register", singleUpload, Register);
+router.post("/register", multipleUpload, Register);
 
 router.route("/transfer-coins").post(isAuthenticated, transferCoins);
+
+router.get("/user/:username", isAuthenticated, findUserByUsername);
 
 router.post("/login", Login);
 
@@ -39,7 +42,7 @@ router.put("/update-profile", isAuthenticated, updateProfile);
 router.put(
   "/update-profile-picture",
   isAuthenticated,
-  singleUpload,
+  multipleUpload,
   updateProfilePicture
 );
 

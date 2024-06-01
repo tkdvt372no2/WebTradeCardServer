@@ -6,6 +6,7 @@ import cors from "cors";
 import user from "./routes/UserRoute.js";
 import payment from "./routes/PaymentRoute.js";
 import card from "./routes/CardRoute.js";
+import post from './routes/PostRoute.js'
 import { saveAllChampionsToDB } from "./config/getalltuong.js";
 config({
   path: "./config/config.env",
@@ -31,6 +32,7 @@ app.use(
 app.use("/api/v1", user);
 app.use("/api/v1", payment);
 app.use("/api/v1", card);
+app.use("/api/v1", post);
 app.use("/", (req, res) => {
   res.send({ message: "Duong Van Tuan" });
 });
