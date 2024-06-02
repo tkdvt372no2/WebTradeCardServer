@@ -6,6 +6,7 @@ import { Notification } from "../models/Notification.js";
 import cloudinary from "cloudinary";
 import getDataUri from "../utils/dataUri.js";
 import { Category } from "../models/Category.js";
+import { sendNotification } from "../index.js";
 
 export const createPost = catchAsyncError(async (req, res, next) => {
   const { title, content, category } = req.body;
@@ -201,7 +202,6 @@ export const addComment = catchAsyncError(async (req, res, next) => {
   post.comments.push(comment);
   await post.save();
 
-  // Thông báo tới các người dùng được tag
   const mentionedUsers = content.match(/@\w+/g);
   if (mentionedUsers) {
     for (let username of mentionedUsers) {
@@ -601,15 +601,18 @@ export const likePost = catchAsyncError(async (req, res, next) => {
   } else {
     post.likes.push(req.user._id);
 
-    const existingNotification = await Notification.findOne({
-      user: post.author,
-      from: req.user._id,
-      postId: post._id,
-      message: `${req.user.username} đã thả tim bài viết của bạn.`,
-    });
+    if (String(post.author) !== String(req.user._id)) {
+      // Kiểm tra nếu người dùng không phải là tác giả của bài viết
+      const existingNotification = await Notification.findOne({
+        user: post.author,
+        from: req.user._id,
+        postId: post._id,
+        message: `${req.user.username} đã thả tim bài viết của bạn.`,
+      });
 
-    if (!existingNotification) {
-      isFirstLike = true;
+      if (!existingNotification) {
+        isFirstLike = true;
+      }
     }
   }
 
@@ -650,36 +653,6 @@ export const likePost = catchAsyncError(async (req, res, next) => {
   res.status(200).json({
     success: true,
     post: updatedPost,
-  });
-});
-
-export const clearReadNotifications = catchAsyncError(
-  async (req, res, next) => {
-    const user = await User.findById(req.user._id);
-    user.notifications = user.notifications.filter(
-      (notification) => !notification.read
-    );
-    await user.save();
-
-    res.status(200).json({
-      success: true,
-      message: "Đã xóa tất cả thông báo đã đọc",
-    });
-  }
-);
-
-export const readNotification = catchAsyncError(async (req, res, next) => {
-  const notification = await Notification.findById(req.params.notificationId);
-  if (!notification) {
-    return next(new ErrorHandler("Thông báo không tồn tại", 404));
-  }
-
-  notification.read = true;
-  await notification.save();
-
-  res.status(200).json({
-    success: true,
-    redirectUrl: notification.link,
   });
 });
 
@@ -765,6 +738,52 @@ export const deleteCategory = catchAsyncError(async (req, res, next) => {
   });
 });
 
+export const clearReadNotifications = catchAsyncError(
+  async (req, res, next) => {
+    await Notification.updateMany(
+      { user: req.user._id, read: true },
+      { deleted: true }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Đã đánh dấu tất cả thông báo đã đọc là đã xóa",
+    });
+  }
+);
+
+export const readNotification = catchAsyncError(async (req, res, next) => {
+  const notification = await Notification.findById(req.params.notificationId);
+  if (!notification) {
+    return next(new ErrorHandler("Thông báo không tồn tại", 404));
+  }
+
+  notification.read = true;
+  await notification.save();
+  let redirectUrl = `/forum/post/${notification.postId}`;
+
+  res.status(200).json({
+    success: true,
+    redirectUrl,
+  });
+});
+
+export const getAllNotifications = catchAsyncError(async (req, res, next) => {
+  const notifications = await Notification.find({
+    user: req.user._id,
+    deleted: false,
+  })
+    .sort({
+      createdAt: -1,
+    })
+    .populate("from", "name username avatar");
+
+  res.status(200).json({
+    success: true,
+    notifications,
+  });
+});
+
 const createNotification = async (userId, fromUserId, message, postId) => {
   const notification = new Notification({
     user: userId,
@@ -773,4 +792,26 @@ const createNotification = async (userId, fromUserId, message, postId) => {
     postId,
   });
   await notification.save();
+  sendNotification(notification.populate("from", "name username avatar"));
 };
+
+export const searchUsersByUsername = catchAsyncError(async (req, res, next) => {
+  const { query } = req.query;
+
+  if (!query) {
+    return res
+      .status(400)
+      .json({ success: false, message: "Không tìm thấy hashtag nào" });
+  }
+
+  const users = await User.find({
+    username: { $regex: query, $options: "i" },
+  }).select("username");
+
+  const formattedUsers = users.map((user) => ({
+    ...user._doc,
+    username: `@${user.username}`,
+  }));
+
+  res.status(200).json({ success: true, users: formattedUsers });
+});

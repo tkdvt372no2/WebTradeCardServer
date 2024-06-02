@@ -19,6 +19,8 @@ import {
   getAllCategories,
   updateCategory,
   deleteCategory,
+  getAllNotifications,
+  searchUsersByUsername,
 } from "../controllers/postController.js";
 import multipleUpload from "../middlewares/multer.js";
 
@@ -54,9 +56,12 @@ router.put(
   likeReply
 );
 
+router.get("/search/users", isAuthenticated, searchUsersByUsername);
+
 router.put("/posts/:id/like", isAuthenticated, likePost);
 
 router.post("/notifications/clear", isAuthenticated, clearReadNotifications);
+router.get("/notifications", isAuthenticated, getAllNotifications); // Thêm endpoint này
 router.get(
   "/notifications/:notificationId/read",
   isAuthenticated,

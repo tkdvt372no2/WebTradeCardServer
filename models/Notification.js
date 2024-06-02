@@ -33,6 +33,10 @@ const notificationSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  deleted: {
+    type: Boolean,
+    default: false,
+  },
 });
 
 export const Notification = mongoose.model("Notification", notificationSchema);
