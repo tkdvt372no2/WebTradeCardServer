@@ -48,7 +48,7 @@ export const createPost = catchAsyncError(async (req, res, next) => {
 
 export const getAllPosts = catchAsyncError(async (req, res, next) => {
   const posts = await Post.find()
-    .populate("author", "name username avatar")
+    .populate("author", "name username avatar addressWallet")
     .populate("category", "name")
     .populate({
       path: "comments",
@@ -80,7 +80,7 @@ export const getAllPosts = catchAsyncError(async (req, res, next) => {
 
 export const getPostDetails = catchAsyncError(async (req, res, next) => {
   const post = await Post.findById(req.params.id)
-    .populate("author", "name username avatar")
+    .populate("author", "name username avatar addressWallet")
     .populate({
       path: "comments",
       populate: [
@@ -116,7 +116,30 @@ export const getPostDetails = catchAsyncError(async (req, res, next) => {
 export const updatePost = catchAsyncError(async (req, res, next) => {
   const { title, content, category } = req.body;
 
-  const post = await Post.findById(req.params.id);
+  const post = await Post.findById(req.params.id)
+    .populate("author", "name username avatar")
+    .populate("category", "name")
+    .populate({
+      path: "comments",
+      populate: [
+        { path: "user", select: "name username avatar" },
+        { path: "likes", select: "name username avatar" },
+        {
+          path: "replies",
+          populate: [
+            { path: "user", select: "name username avatar" },
+            { path: "likes", select: "name username avatar" },
+            {
+              path: "reactions",
+              populate: [
+                { path: "user", select: "name username avatar" },
+                { path: "likes", select: "name username avatar" },
+              ],
+            },
+          ],
+        },
+      ],
+    });
 
   if (!post) {
     return next(new ErrorHandler("Bài đăng không tồn tại", 404));
@@ -131,7 +154,6 @@ export const updatePost = catchAsyncError(async (req, res, next) => {
   post.title = title || post.title;
   post.content = content || post.content;
   post.category = category || post.category;
-
   await post.save();
 
   res.status(200).json({
@@ -202,11 +224,20 @@ export const addComment = catchAsyncError(async (req, res, next) => {
   post.comments.push(comment);
   await post.save();
 
+  if (String(post.author) !== String(req.user._id)) {
+    await createNotification(
+      post.author,
+      req.user._id,
+      `${req.user.username} đã bình luận trên bài viết của bạn.`,
+      post._id
+    );
+  }
+
   const mentionedUsers = content.match(/@\w+/g);
   if (mentionedUsers) {
     for (let username of mentionedUsers) {
       const user = await User.findOne({ username: username.slice(1) });
-      if (user) {
+      if (user && String(user._id) !== String(req.user._id)) {
         await createNotification(
           user._id,
           req.user._id,
@@ -294,19 +325,20 @@ export const replyComment = catchAsyncError(async (req, res, next) => {
   await comment.save();
   await post.save();
 
-  // Thông báo tới người nhận trả lời và người được tag
-  await createNotification(
-    comment.user,
-    req.user._id,
-    `${req.user.username} đã trả lời bình luận của bạn.`,
-    post._id
-  );
+  if (String(comment.user) !== String(req.user._id)) {
+    await createNotification(
+      comment.user,
+      req.user._id,
+      `${req.user.username} đã trả lời bình luận của bạn.`,
+      post._id
+    );
+  }
 
   const mentionedUsers = content.match(/@\w+/g);
   if (mentionedUsers) {
     for (let username of mentionedUsers) {
       const user = await User.findOne({ username: username.slice(1) });
-      if (user) {
+      if (user && String(user._id) !== String(req.user._id)) {
         await createNotification(
           user._id,
           req.user._id,
@@ -360,38 +392,34 @@ export const likeComment = catchAsyncError(async (req, res, next) => {
     return next(new ErrorHandler("Bình luận không tồn tại", 404));
   }
 
-  let isFirstLike = false;
-
   if (comment.likes.includes(req.user._id)) {
     comment.likes.pull(req.user._id);
   } else {
     comment.likes.push(req.user._id);
 
-    const existingNotification = await Notification.findOne({
-      user: comment.user,
-      from: req.user._id,
-      commentId: comment._id,
-      message: `${req.user.username} đã thả tim bình luận của bạn.`,
-    });
+    if (String(comment.user) !== String(req.user._id)) {
+      const existingNotification = await Notification.findOne({
+        user: comment.user,
+        from: req.user._id,
+        commentId: comment._id,
+        message: `${req.user.username} đã thả tim bình luận của bạn.`,
+      });
 
-    if (!existingNotification) {
-      isFirstLike = true;
+      if (!existingNotification) {
+        await createNotification(
+          comment.user,
+          req.user._id,
+          `${req.user.username} đã thả tim bình luận của bạn.`,
+          post._id
+        );
+      }
     }
   }
 
   await comment.save();
   await post.save();
 
-  if (isFirstLike) {
-    await createNotification(
-      comment.user,
-      req.user._id,
-      `${req.user.username} đã thả tim bình luận của bạn.`,
-      post._id
-    );
-  }
-
-  const updatedPost = await Post.findById(req.params.id)
+  const updatedPost = await Post.findById(postId)
     .populate("author", "name username avatar")
     .populate({
       path: "comments",
@@ -465,19 +493,20 @@ export const replyReply = catchAsyncError(async (req, res, next) => {
   reply.reactions.push(newReaction._id);
   await reply.save();
 
-  // Thông báo tới người nhận trả lời và người được tag
-  await createNotification(
-    reply.user,
-    req.user._id,
-    `${req.user.username} đã trả lời phản hồi của bạn.`,
-    post._id
-  );
+  if (String(reply.user) !== String(req.user._id)) {
+    await createNotification(
+      reply.user,
+      req.user._id,
+      `${req.user.username} đã trả lời phản hồi của bạn.`,
+      post._id
+    );
+  }
 
   const mentionedUsers = content.match(/@\w+/g);
   if (mentionedUsers) {
     for (let username of mentionedUsers) {
       const user = await User.findOne({ username: username.slice(1) });
-      if (user) {
+      if (user && String(user._id) !== String(req.user._id)) {
         await createNotification(
           user._id,
           req.user._id,
@@ -594,15 +623,12 @@ export const likePost = catchAsyncError(async (req, res, next) => {
     return next(new ErrorHandler("Bài đăng không tồn tại", 404));
   }
 
-  let isFirstLike = false;
-
   if (post.likes.includes(req.user._id)) {
     post.likes.pull(req.user._id);
   } else {
     post.likes.push(req.user._id);
 
     if (String(post.author) !== String(req.user._id)) {
-      // Kiểm tra nếu người dùng không phải là tác giả của bài viết
       const existingNotification = await Notification.findOne({
         user: post.author,
         from: req.user._id,
@@ -611,21 +637,17 @@ export const likePost = catchAsyncError(async (req, res, next) => {
       });
 
       if (!existingNotification) {
-        isFirstLike = true;
+        await createNotification(
+          post.author,
+          req.user._id,
+          `${req.user.username} đã thả tim bài viết của bạn.`,
+          post._id
+        );
       }
     }
   }
 
   await post.save();
-
-  if (isFirstLike) {
-    await createNotification(
-      post.author,
-      req.user._id,
-      `${req.user.username} đã thả tim bài viết của bạn.`,
-      post._id
-    );
-  }
 
   const updatedPost = await Post.findById(req.params.id)
     .populate("author", "name username avatar")
@@ -650,6 +672,7 @@ export const likePost = catchAsyncError(async (req, res, next) => {
         },
       ],
     });
+
   res.status(200).json({
     success: true,
     post: updatedPost,
@@ -785,6 +808,9 @@ export const getAllNotifications = catchAsyncError(async (req, res, next) => {
 });
 
 const createNotification = async (userId, fromUserId, message, postId) => {
+  if (String(userId) === String(fromUserId)) {
+    return;
+  }
   const notification = new Notification({
     user: userId,
     from: fromUserId,
