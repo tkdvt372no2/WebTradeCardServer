@@ -11,6 +11,7 @@ import {
   getAdminStats,
   getAllUsers,
   getMyProfile,
+  refreshToken,
   resetPassword,
   transferCoins,
   updateProfile,
@@ -28,6 +29,8 @@ router.route("/transfer-coins").post(isAuthenticated, transferCoins);
 router.get("/user/:username", isAuthenticated, findUserByUsername);
 
 router.post("/login", Login);
+
+router.get('/refresh-token',refreshToken)
 
 router.get("/logout", Logout);
 

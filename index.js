@@ -4,9 +4,9 @@ import cloudinary from "cloudinary";
 import nodeCron from "node-cron";
 import { Stats } from "./models/Stats.js";
 import http from "http";
-import { Server } from "socket.io";
 import PayOS from "@payos/node";
 import { updateCardPricesRandomly } from "./controllers/cardController.js";
+import { initializeSocket } from "./utils/socket.js";
 
 connectDb();
 
@@ -24,21 +24,9 @@ export const payOS = new PayOS(
 
 const server = http.createServer(app);
 
-const io = new Server(server, {
-  cors: {
-    origin: process.env.FRONTEND_URL,
-    methods: ["GET", "POST"],
-  },
-});
-
-io.on("connection", (socket) => {
-  console.log("Kết nối socket thành công");
-});
-
-export const sendNotification = (notification) => {
-  io.emit("notification", notification);
-};
-
+console.log("Initializing socket...");
+const io = initializeSocket(server, cloudinary);
+console.log("Socket initialized");
 nodeCron.schedule("0 0 0 1 * *", async () => {
   try {
     await Stats.create({});

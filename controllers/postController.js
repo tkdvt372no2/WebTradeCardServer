@@ -6,7 +6,7 @@ import { Notification } from "../models/Notification.js";
 import cloudinary from "cloudinary";
 import getDataUri from "../utils/dataUri.js";
 import { Category } from "../models/Category.js";
-import { sendNotification } from "../index.js";
+import { createNotification } from "../utils/socket.js";
 
 export const createPost = catchAsyncError(async (req, res, next) => {
   const { title, content, category } = req.body;
@@ -47,7 +47,7 @@ export const createPost = catchAsyncError(async (req, res, next) => {
 });
 
 export const getAllPosts = catchAsyncError(async (req, res, next) => {
-  const posts = await Post.find()
+  const posts = await Post.find({ deleted: false })
     .populate("author", "name username avatar addressWallet")
     .populate("category", "name")
     .populate({
@@ -103,8 +103,8 @@ export const getPostDetails = catchAsyncError(async (req, res, next) => {
       ],
     });
 
-  if (!post) {
-    return next(new ErrorHandler("Bài đăng không tồn tại", 404));
+  if (!post || post.deleted) {
+    return next(new ErrorHandler("Bài đăng không còn tồn tại", 404));
   }
 
   res.status(200).json({
@@ -114,7 +114,8 @@ export const getPostDetails = catchAsyncError(async (req, res, next) => {
 });
 
 export const updatePost = catchAsyncError(async (req, res, next) => {
-  const { title, content, category } = req.body;
+  const { title, content, category, mediaToDelete } = req.body;
+  const files = req.files;
 
   const post = await Post.findById(req.params.id)
     .populate("author", "name username avatar")
@@ -141,11 +142,11 @@ export const updatePost = catchAsyncError(async (req, res, next) => {
       ],
     });
 
-  if (!post) {
-    return next(new ErrorHandler("Bài đăng không tồn tại", 404));
+  if (!post || post.deleted) {
+    return next(new ErrorHandler("Bài đăng không tồn tại hoặc đã bị xóa", 404));
   }
 
-  if (post.author.toString() !== req.user._id.toString()) {
+  if (post.author._id.toString() !== req.user._id.toString()) {
     return next(
       new ErrorHandler("Bạn không có quyền cập nhật bài đăng này", 403)
     );
@@ -154,6 +155,46 @@ export const updatePost = catchAsyncError(async (req, res, next) => {
   post.title = title || post.title;
   post.content = content || post.content;
   post.category = category || post.category;
+
+  if (mediaToDelete && mediaToDelete.length > 0) {
+    const mediaPublicIdsToDelete = post.media
+      .filter((media) => mediaToDelete.includes(media.public_id))
+      .map((media) => ({ public_id: media.public_id, type: media.type }));
+
+    post.media = post.media.filter(
+      (media) => !mediaToDelete.includes(media.public_id)
+    );
+
+    for (const { public_id, type } of mediaPublicIdsToDelete) {
+      let resourceType = "image";
+      if (type === "video") {
+        resourceType = "video";
+      }
+
+      try {
+        const result = await cloudinary.v2.uploader.destroy(public_id, {
+          resource_type: resourceType,
+        });
+      } catch (error) {
+        console.error("Lỗi khi xóa:", error);
+      }
+    }
+  }
+
+  if (files && files.length > 0) {
+    for (let file of files) {
+      const fileUri = getDataUri(file);
+      const mycloud = await cloudinary.v2.uploader.upload(fileUri.content, {
+        resource_type: "auto",
+      });
+      post.media.push({
+        public_id: mycloud.public_id,
+        url: mycloud.secure_url,
+        type: file.mimetype.startsWith("image") ? "image" : "video",
+      });
+    }
+  }
+
   await post.save();
 
   res.status(200).json({
@@ -173,8 +214,8 @@ export const deletePost = catchAsyncError(async (req, res, next) => {
     return next(new ErrorHandler("Bạn không có quyền xóa bài đăng này", 403));
   }
 
-  await cloudinary.v2.uploader.destroy(post.image.public_id);
-  await post.remove();
+  post.deleted = true;
+  await post.save();
 
   res.status(200).json({
     success: true,
@@ -229,7 +270,8 @@ export const addComment = catchAsyncError(async (req, res, next) => {
       post.author,
       req.user._id,
       `${req.user.username} đã bình luận trên bài viết của bạn.`,
-      post._id
+      "comment",
+      req.params.id
     );
   }
 
@@ -242,7 +284,8 @@ export const addComment = catchAsyncError(async (req, res, next) => {
           user._id,
           req.user._id,
           `${req.user.username} đã tag bạn trong một bình luận.`,
-          post._id
+          "comment",
+          comment._id
         );
       }
     }
@@ -330,6 +373,7 @@ export const replyComment = catchAsyncError(async (req, res, next) => {
       comment.user,
       req.user._id,
       `${req.user.username} đã trả lời bình luận của bạn.`,
+      "comment",
       post._id
     );
   }
@@ -343,7 +387,8 @@ export const replyComment = catchAsyncError(async (req, res, next) => {
           user._id,
           req.user._id,
           `${req.user.username} đã tag bạn trong một trả lời.`,
-          post._id
+          "comment",
+          reply._id
         );
       }
     }
@@ -401,15 +446,16 @@ export const likeComment = catchAsyncError(async (req, res, next) => {
       const existingNotification = await Notification.findOne({
         user: comment.user,
         from: req.user._id,
-        commentId: comment._id,
+        targetId: comment.user,
+        type: "comment",
         message: `${req.user.username} đã thả tim bình luận của bạn.`,
       });
-
       if (!existingNotification) {
         await createNotification(
           comment.user,
           req.user._id,
           `${req.user.username} đã thả tim bình luận của bạn.`,
+          "comment",
           post._id
         );
       }
@@ -498,7 +544,8 @@ export const replyReply = catchAsyncError(async (req, res, next) => {
       reply.user,
       req.user._id,
       `${req.user.username} đã trả lời phản hồi của bạn.`,
-      post._id
+      "comment",
+      post.id
     );
   }
 
@@ -511,7 +558,8 @@ export const replyReply = catchAsyncError(async (req, res, next) => {
           user._id,
           req.user._id,
           `${req.user.username} đã tag bạn trong một trả lời.`,
-          post._id
+          "comment",
+          reply._id
         );
       }
     }
@@ -570,7 +618,8 @@ export const likeReply = catchAsyncError(async (req, res, next) => {
     const existingNotification = await Notification.findOne({
       user: reply.user,
       from: req.user._id,
-      replyId: reply._id,
+      targetId: reply._id,
+      type: "comment",
       message: `${req.user.username} đã thả tim phản hồi của bạn.`,
     });
 
@@ -587,7 +636,8 @@ export const likeReply = catchAsyncError(async (req, res, next) => {
       reply.user,
       req.user._id,
       `${req.user.username} đã thả tim phản hồi của bạn.`,
-      post._id
+      "comment",
+      reply._id
     );
   }
 
@@ -632,7 +682,8 @@ export const likePost = catchAsyncError(async (req, res, next) => {
       const existingNotification = await Notification.findOne({
         user: post.author,
         from: req.user._id,
-        postId: post._id,
+        targetId: post._id,
+        type: "post",
         message: `${req.user.username} đã thả tim bài viết của bạn.`,
       });
 
@@ -641,6 +692,7 @@ export const likePost = catchAsyncError(async (req, res, next) => {
           post.author,
           req.user._id,
           `${req.user.username} đã thả tim bài viết của bạn.`,
+          "post",
           post._id
         );
       }
@@ -696,7 +748,8 @@ export const tagUser = catchAsyncError(async (req, res, next) => {
     user: user._id,
     from: req.user._id,
     message: `${req.user.username} đã tag bạn trong một bài viết.`,
-    postId: post._id,
+    targetId: post._id,
+    type: "post",
   });
 
   res.status(200).json({
@@ -783,8 +836,24 @@ export const readNotification = catchAsyncError(async (req, res, next) => {
 
   notification.read = true;
   await notification.save();
-  let redirectUrl = `/forum/post/${notification.postId}`;
 
+  let redirectUrl = null;
+  switch (notification.type) {
+    case "post":
+      redirectUrl = `/forum/post/${notification.targetId}`;
+      break;
+    case "comment":
+      redirectUrl = `/forum/post/${notification.targetId}`;
+      break;
+    case "friendRequest":
+      redirectUrl = `/profile/friends`;
+      break;
+    case "friendRequestAccepted":
+      redirectUrl = `/profile/friends`;
+      break;
+    default:
+      break;
+  }
   res.status(200).json({
     success: true,
     redirectUrl,
@@ -806,20 +875,6 @@ export const getAllNotifications = catchAsyncError(async (req, res, next) => {
     notifications,
   });
 });
-
-const createNotification = async (userId, fromUserId, message, postId) => {
-  if (String(userId) === String(fromUserId)) {
-    return;
-  }
-  const notification = new Notification({
-    user: userId,
-    from: fromUserId,
-    message,
-    postId,
-  });
-  await notification.save();
-  sendNotification(notification.populate("from", "name username avatar"));
-};
 
 export const searchUsersByUsername = catchAsyncError(async (req, res, next) => {
   const { query } = req.query;

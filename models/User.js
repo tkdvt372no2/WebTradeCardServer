@@ -49,6 +49,12 @@ const schema = new mongoose.Schema({
     type: Number,
     default: 0,
   },
+  friends: [
+    {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+  ],
   myCard: [
     {
       card: {
@@ -69,18 +75,13 @@ const schema = new mongoose.Schema({
   },
   resetPasswordToken: String,
   resetPasswordExpire: String,
+  refreshToken: String,
 });
 
 schema.methods.getJWTToken = function () {
-  return jwt.sign(
-    {
-      _id: this._id,
-    },
-    process.env.JWT_SECRET,
-    {
-      expiresIn: "15d",
-    }
-  );
+  return jwt.sign({ _id: this._id }, process.env.JWT_SECRET, {
+    expiresIn: "30m",
+  });
 };
 
 schema.pre("save", async function (next) {
@@ -111,6 +112,16 @@ schema.methods.getResetToken = function () {
     .digest("hex");
   this.resetPasswordExpire = Date.now() + 15 * 60 * 1000;
   return resetToken;
+};
+
+schema.methods.generateRefreshToken = function () {
+  const refreshToken = jwt.sign(
+    { _id: this._id },
+    process.env.JWT_REFRESH_SECRET,
+    { expiresIn: "30d" }
+  );
+  this.refreshToken = refreshToken;
+  return refreshToken;
 };
 
 export const User = mongoose.model("User", schema);

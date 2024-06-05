@@ -9,6 +9,60 @@ import getDataUri from "../utils/dataUri.js";
 import { Stats } from "../models/Stats.js";
 import { getRandomCards, updateCardTotals } from "./cardController.js";
 import { Transaction } from "../models/Transaction.js";
+import jwt from "jsonwebtoken";
+
+export const refreshToken = async (req, res, next) => {
+  const refreshToken = req.cookies.refreshToken;
+  if (!refreshToken) {
+    return res
+      .status(401)
+      .json({ success: false, message: "Refresh token không tồn tại" });
+  }
+
+  try {
+    const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
+    const user = await User.findById(decoded._id);
+    if (!user || user.refreshToken !== refreshToken) {
+      return res.status(401).json({
+        success: false,
+        message: "Refresh token không hợp lệ hoặc người dùng không tồn tại",
+      });
+    }
+
+    const newToken = user.getJWTToken();
+    const newRefreshToken = user.generateRefreshToken(user._id);
+
+    user.refreshToken = newRefreshToken;
+    await user.save();
+
+    const options = {
+      expires: new Date(Date.now() + 30 * 60 * 1000),
+      httpOnly: true,
+      sameSite: "none",
+      secure: true,
+    };
+
+    const refreshTokenOptions = {
+      expires: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      httpOnly: true,
+      sameSite: "none",
+      secure: true,
+    };
+
+    res.cookie("token", newToken, options);
+    res.cookie("refreshToken", newRefreshToken, refreshTokenOptions);
+
+    res.status(200).json({
+      success: true,
+      token: newToken,
+    });
+  } catch (error) {
+    return res.status(401).json({
+      success: false,
+      message: "Refresh token hết hạn, vui lòng đăng nhập lại",
+    });
+  }
+};
 
 export const Register = catchAsyncError(async (req, res, next) => {
   const { name, email, password, username } = req.body;
@@ -88,10 +142,31 @@ export const findUserByUsername = async (req, res) => {
 };
 
 export const Logout = catchAsyncError(async (req, res, next) => {
+  const { refreshToken } = req.cookies;
+
+  if (refreshToken) {
+    const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
+    const user = await User.findById(decoded._id);
+
+    if (user) {
+      user.refreshToken = null;
+      await user.save();
+    }
+  }
+
   res
     .status(200)
     .cookie("token", null, {
       expires: new Date(Date.now()),
+      httpOnly: true,
+      sameSite: "none",
+      secure: true,
+    })
+    .cookie("refreshToken", null, {
+      expires: new Date(Date.now()),
+      httpOnly: true,
+      sameSite: "none",
+      secure: true,
     })
     .json({
       success: true,
@@ -164,7 +239,7 @@ export const forgetPassword = catchAsyncError(async (req, res, next) => {
 
   await user.save();
   const url = `${process.env.FRONTEND_URL}/reset-password/${resetToken}`;
-  const message = `Nhấn vào link để đặt lại mật khẩu: ${url}  .Nếu bạn không có yêu cầu gì hãy bỏ qua`;
+  const message = `Nhấn vào link để đặt lại mật khẩu: ${url}. Nếu bạn không có yêu cầu gì hãy bỏ qua.`;
 
   await sendEmail(user.email, "Đặt lại mật khẩu", message);
 
@@ -182,9 +257,7 @@ export const resetPassword = catchAsyncError(async (req, res, next) => {
     .digest("hex");
   const user = await User.findOne({
     resetPasswordToken,
-    resetPasswordExpire: {
-      $gt: Date.now(),
-    },
+    resetPasswordExpire: { $gt: Date.now() },
   });
 
   if (!user)

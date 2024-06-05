@@ -15,15 +15,14 @@ const notificationSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
-  postId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "Post",
+  type: {
+    type: String,
+    enum: ["post", "comment", "friendRequest"],
     required: true,
   },
-  commentId: {
+  targetId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: "Comment",
-    required: false,
+    required: true,
   },
   createdAt: {
     type: Date,

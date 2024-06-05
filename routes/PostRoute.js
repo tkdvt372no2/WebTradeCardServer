@@ -4,7 +4,6 @@ import {
   createPost,
   getAllPosts,
   getPostDetails,
-  updatePost,
   deletePost,
   addComment,
   replyComment,
@@ -21,6 +20,7 @@ import {
   deleteCategory,
   getAllNotifications,
   searchUsersByUsername,
+  updatePost,
 } from "../controllers/postController.js";
 import multipleUpload from "../middlewares/multer.js";
 
@@ -28,8 +28,8 @@ const router = express.Router();
 
 router.post("/posts", isAuthenticated, multipleUpload, createPost);
 router.get("/posts", getAllPosts);
-router.get("/posts/:id", getPostDetails);
-router.put("/posts/:id", isAuthenticated, updatePost);
+router.get("/posts/:id", isAuthenticated, getPostDetails);
+router.put("/posts/:id", isAuthenticated, multipleUpload, updatePost);
 router.delete("/posts/:id", isAuthenticated, deletePost);
 
 router.post("/posts/:id/comments", isAuthenticated, multipleUpload, addComment);
