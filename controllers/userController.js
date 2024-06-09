@@ -133,7 +133,7 @@ export const findUserByUsername = async (req, res) => {
     if (!user) {
       return res
         .status(404)
-        .json({ success: false, message: "User not found" });
+        .json({ success: false, message: "Không tìm thấy người dùng" });
     }
     res.status(200).json({ success: true, user });
   } catch (error) {

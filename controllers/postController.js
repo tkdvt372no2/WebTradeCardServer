@@ -271,7 +271,7 @@ export const addComment = catchAsyncError(async (req, res, next) => {
       req.user._id,
       `${req.user.username} đã bình luận trên bài viết của bạn.`,
       "comment",
-      req.params.id
+      post._id
     );
   }
 
@@ -285,7 +285,7 @@ export const addComment = catchAsyncError(async (req, res, next) => {
           req.user._id,
           `${req.user.username} đã tag bạn trong một bình luận.`,
           "comment",
-          comment._id
+          post._id
         );
       }
     }
@@ -446,17 +446,20 @@ export const likeComment = catchAsyncError(async (req, res, next) => {
       const existingNotification = await Notification.findOne({
         user: comment.user,
         from: req.user._id,
-        targetId: comment.user,
-        type: "comment",
         message: `${req.user.username} đã thả tim bình luận của bạn.`,
+        type: "like",
+        targetId: post._id,
+        commentId: comment._id,
       });
+
       if (!existingNotification) {
         await createNotification(
           comment.user,
           req.user._id,
           `${req.user.username} đã thả tim bình luận của bạn.`,
-          "comment",
-          post._id
+          "like",
+          post._id,
+          comment._id
         );
       }
     }
@@ -618,11 +621,11 @@ export const likeReply = catchAsyncError(async (req, res, next) => {
     const existingNotification = await Notification.findOne({
       user: reply.user,
       from: req.user._id,
-      targetId: reply._id,
-      type: "comment",
       message: `${req.user.username} đã thả tim phản hồi của bạn.`,
+      type: "like",
+      targetId: post._id,
+      commentId: reply._id,
     });
-
     if (!existingNotification) {
       isFirstLike = true;
     }
@@ -636,7 +639,8 @@ export const likeReply = catchAsyncError(async (req, res, next) => {
       reply.user,
       req.user._id,
       `${req.user.username} đã thả tim phản hồi của bạn.`,
-      "comment",
+      "like",
+      post._id,
       reply._id
     );
   }
@@ -843,6 +847,9 @@ export const readNotification = catchAsyncError(async (req, res, next) => {
       redirectUrl = `/forum/post/${notification.targetId}`;
       break;
     case "comment":
+      redirectUrl = `/forum/post/${notification.targetId}`;
+      break;
+    case "like":
       redirectUrl = `/forum/post/${notification.targetId}`;
       break;
     case "friendRequest":

@@ -2,10 +2,11 @@ import { catchAsyncError } from "../middlewares/CatchAsyncError.js";
 import ErrorHandler from "../utils/errorHandler.js";
 import { User } from "../models/User.js";
 import { FriendRequest } from "../models/FriendRequest.js";
-import { sendNotification } from "../index.js";
+import { sendNotification } from "../utils/socket.js";
 
 export const sendFriendRequest = catchAsyncError(async (req, res, next) => {
   const { recipientId } = req.body;
+  console.log(recipientId);
 
   const existingRequest = await FriendRequest.findOne({
     requester: req.user._id,
@@ -21,11 +22,18 @@ export const sendFriendRequest = catchAsyncError(async (req, res, next) => {
     recipient: recipientId,
   });
 
+  const user = await User.findById(req.user._id).select("name username avatar");
+
   sendNotification(
     {
       type: "friendRequest",
-      message: `${req.user.username} đã gửi cho bạn một yêu cầu kết bạn.`,
-      from: req.user._id,
+      message: `${user.username} đã gửi cho bạn một yêu cầu kết bạn.`,
+      from: {
+        id: user._id,
+        name: user.name,
+        username: user.username,
+        avatar: user.avatar,
+      },
     },
     recipientId
   );
@@ -63,11 +71,20 @@ export const respondToFriendRequest = catchAsyncError(
         $push: { friends: req.user._id },
       });
 
+      const user = await User.findById(req.user._id).select(
+        "name username avatar"
+      );
+
       sendNotification(
         {
           type: "friendRequestAccepted",
-          message: `${req.user.username} đã chấp nhận lời mời kết bạn của bạn.`,
-          from: req.user._id,
+          message: `${user.username} đã chấp nhận lời mời kết bạn của bạn.`,
+          from: {
+            id: user._id,
+            name: user.name,
+            username: user.username,
+            avatar: user.avatar,
+          },
         },
         friendRequest.requester
       );
@@ -106,3 +123,45 @@ export const getFriendRequests = catchAsyncError(async (req, res, next) => {
     friendRequests,
   });
 });
+
+export const unfriend = catchAsyncError(async (req, res, next) => {
+  const { friendId } = req.body;
+
+  if (!friendId) {
+    return next(new ErrorHandler("Vui lòng cung cấp ID của bạn bè", 400));
+  }
+
+  await User.findByIdAndUpdate(req.user._id, {
+    $pull: { friends: friendId },
+  });
+
+  await User.findByIdAndUpdate(friendId, {
+    $pull: { friends: req.user._id },
+  });
+
+  res.status(200).json({
+    success: true,
+    message: "Đã hủy kết bạn",
+  });
+});
+
+export const cancelFriendRequest = catchAsyncError(async (req, res, next) => {
+  const { requestId } = req.body;
+
+  const friendRequest = await FriendRequest.findOne({
+    _id: requestId,
+    requester: req.user._id,
+  });
+
+  if (!friendRequest) {
+    return next(new ErrorHandler("Yêu cầu kết bạn không tồn tại", 404));
+  }
+
+  await friendRequest.deleteOne();
+
+  res.status(200).json({
+    success: true,
+    message: "Đã hủy yêu cầu kết bạn",
+  });
+});
+

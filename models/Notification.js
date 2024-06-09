@@ -17,12 +17,17 @@ const notificationSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ["post", "comment", "friendRequest"],
+    enum: ["post", "comment", "friendRequest", "like"],
     required: true,
   },
   targetId: {
     type: mongoose.Schema.Types.ObjectId,
     required: true,
+  },
+  commentId: {
+    type: mongoose.Schema.Types.ObjectId,
+    required: false,
+    default: null,
   },
   createdAt: {
     type: Date,

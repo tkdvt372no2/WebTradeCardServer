@@ -8,6 +8,7 @@ import payment from "./routes/PaymentRoute.js";
 import card from "./routes/CardRoute.js";
 import post from "./routes/PostRoute.js";
 import chat from "./routes/ChatRoute.js";
+import friend from "./routes/FriendRoute.js";
 import { saveAllChampionsToDB } from "./config/getalltuong.js";
 config({
   path: "./config/config.env",
@@ -35,6 +36,7 @@ app.use("/api/v1", payment);
 app.use("/api/v1", card);
 app.use("/api/v1", post);
 app.use("/api/v1", chat);
+app.use("/api/v1", friend);
 app.use("/", (req, res) => {
   res.send({ message: "Duong Van Tuan" });
 });

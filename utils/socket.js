@@ -3,9 +3,10 @@ import cloudinary from "cloudinary";
 import { Message } from "../models/Chat.js";
 import getDataUri from "./dataUri.js";
 import { Notification } from "./../models/Notification.js";
+import { User } from "../models/User.js";
 
 let io;
-const userSockets = new Map(); 
+const userSockets = new Map();
 
 export const initializeSocket = (server) => {
   io = new Server(server, {
@@ -17,17 +18,19 @@ export const initializeSocket = (server) => {
 
   io.on("connection", (socket) => {
     console.log("Kết nối socket thành công");
-
-    socket.on("joinRoom", (userId) => {
+    socket.on("joinRoom", async (userId) => {
       userSockets.set(userId, socket.id);
-      console.log(`User ${userId} connected with socket id ${socket.id}`);
+      await User.findByIdAndUpdate(userId, { isOnline: true });
+      console.log(
+        `user ${userId} đã kết nối socket thành công với socketID: ${socket.id}`
+      );
     });
 
-    socket.on("disconnect", () => {
-      // Remove userId when socket disconnects
+    socket.on("disconnect", async () => {
       for (let [userId, socketId] of userSockets.entries()) {
         if (socketId === socket.id) {
           userSockets.delete(userId);
+          await User.findByIdAndUpdate(userId, { isOnline: false });
           break;
         }
       }
@@ -77,9 +80,6 @@ export const initializeSocket = (server) => {
 
 export const sendNotification = (notification, recipientId) => {
   const socketId = userSockets.get(recipientId.toString());
-  console.log(
-    `Sending notification to ${recipientId} with socket id ${socketId}`
-  );
   if (socketId) {
     io.to(socketId).emit("notification", notification);
   }
@@ -90,7 +90,8 @@ export const createNotification = async (
   fromUserId,
   message,
   type,
-  targetId
+  targetId,
+  commentId = null
 ) => {
   if (String(userId) === String(fromUserId)) {
     return;
@@ -102,6 +103,7 @@ export const createNotification = async (
     message,
     type,
     targetId,
+    commentId,
   });
   await notification.save();
   const populatedNotification = await Notification.findById(
